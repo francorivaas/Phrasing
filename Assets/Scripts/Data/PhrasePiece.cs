@@ -13,16 +13,21 @@ public class PhrasePiece : MonoBehaviour,
     [SerializeField] private CanvasGroup canvasGroup;
 
     [Header("Tamaño")]
-    [SerializeField] private float horizontalPadding = 60f;
-    [SerializeField] private float verticalPadding = 30f;
-    [SerializeField] private float minWidth = 130f;
-    [SerializeField] private float maxWidth = 700f;
-    [SerializeField] private float minHeight = 90f;
-    [SerializeField] private float maxHeight = 260f;
+    [SerializeField, Min(0f)] private float horizontalPadding = 60f;
+    [SerializeField, Min(0f)] private float verticalPadding = 30f;
+
+    [SerializeField, Min(1f)] private float minWidth = 150f;
+    [SerializeField, Min(1f)] private float maxWidth = 700f;
+
+    [SerializeField, Min(1f)] private float minHeight = 100f;
+    [SerializeField, Min(1f)] private float maxHeight = 260f;
+
+    [Header("Límites de movimiento")]
+    [Tooltip("Separación mínima entre la pieza y los bordes del PlayArea.")]
+    [SerializeField, Min(0f)] private float movementPadding = 40f;
 
     private RoundController roundController;
     private RectTransform movementArea;
-    private Canvas rootCanvas;
 
     private Vector2 positionBeforeDrag;
     private Vector2 pointerOffset;
@@ -36,6 +41,7 @@ public class PhrasePiece : MonoBehaviour,
 
     public RectTransform RectTransform => rectTransform;
     public Vector2 AnchoredPosition => rectTransform.anchoredPosition;
+    public float MovementPadding => movementPadding;
 
     public void Initialize(
         RoundController controller,
@@ -46,7 +52,6 @@ public class PhrasePiece : MonoBehaviour,
         int endIndex)
     {
         roundController = controller;
-        rootCanvas = canvas;
         movementArea = area;
 
         StartIndex = startIndex;
@@ -56,11 +61,21 @@ public class PhrasePiece : MonoBehaviour,
         FindMissingReferences();
         ConfigureRectTransform();
 
+        if (label == null)
+        {
+            Debug.LogError(
+                $"La pieza {name} no tiene asignado un componente TMP_Text."
+            );
+
+            return;
+        }
+
         label.text = PieceText;
         label.enableWordWrapping = true;
         label.overflowMode = TextOverflowModes.Overflow;
 
         ResizeToText();
+        SnapInsideMovementArea();
     }
 
     private void FindMissingReferences()
@@ -88,6 +103,15 @@ public class PhrasePiece : MonoBehaviour,
 
     private void ConfigureRectTransform()
     {
+        if (rectTransform == null)
+        {
+            return;
+        }
+
+        /*
+         * Todas las piezas utilizan el centro del PlayArea
+         * como origen de coordenadas.
+         */
         rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
         rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
         rectTransform.pivot = new Vector2(0.5f, 0.5f);
@@ -100,45 +124,56 @@ public class PhrasePiece : MonoBehaviour,
             return;
         }
 
-        Vector2 singleLineSize = label.GetPreferredValues(PieceText);
+        Vector2 singleLinePreferredSize =
+            label.GetPreferredValues(PieceText);
 
-        float width = Mathf.Clamp(
-            singleLineSize.x + horizontalPadding,
+        float desiredWidth =
+            singleLinePreferredSize.x + horizontalPadding;
+
+        float finalWidth = Mathf.Clamp(
+            desiredWidth,
             minWidth,
             maxWidth
         );
 
         float availableTextWidth = Mathf.Max(
             1f,
-            width - horizontalPadding
+            finalWidth - horizontalPadding
         );
 
-        Vector2 wrappedTextSize = label.GetPreferredValues(
-            PieceText,
-            availableTextWidth,
-            0f
-        );
+        Vector2 wrappedPreferredSize =
+            label.GetPreferredValues(
+                PieceText,
+                availableTextWidth,
+                0f
+            );
 
-        float height = Mathf.Clamp(
-            wrappedTextSize.y + verticalPadding,
+        float desiredHeight =
+            wrappedPreferredSize.y + verticalPadding;
+
+        float finalHeight = Mathf.Clamp(
+            desiredHeight,
             minHeight,
             maxHeight
         );
 
         rectTransform.SetSizeWithCurrentAnchors(
             RectTransform.Axis.Horizontal,
-            width
+            finalWidth
         );
 
         rectTransform.SetSizeWithCurrentAnchors(
             RectTransform.Axis.Vertical,
-            height
+            finalHeight
         );
     }
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        if (!canDrag || movementArea == null)
+        if (!canDrag ||
+            movementArea == null ||
+            roundController == null ||
+            !roundController.CanInteract)
         {
             return;
         }
@@ -146,6 +181,9 @@ public class PhrasePiece : MonoBehaviour,
         isDragging = true;
         positionBeforeDrag = rectTransform.anchoredPosition;
 
+        /*
+         * Coloca la pieza delante de las demás mientras se arrastra.
+         */
         transform.SetAsLastSibling();
 
         canvasGroup.blocksRaycasts = false;
@@ -158,13 +196,18 @@ public class PhrasePiece : MonoBehaviour,
                 out Vector2 localPointerPosition))
         {
             pointerOffset =
-                rectTransform.anchoredPosition - localPointerPosition;
+                rectTransform.anchoredPosition -
+                localPointerPosition;
         }
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        if (!canDrag || !isDragging || movementArea == null)
+        if (!canDrag ||
+            !isDragging ||
+            movementArea == null ||
+            roundController == null ||
+            !roundController.CanInteract)
         {
             return;
         }
@@ -175,79 +218,162 @@ public class PhrasePiece : MonoBehaviour,
                 eventData.pressEventCamera,
                 out Vector2 localPointerPosition))
         {
-            rectTransform.anchoredPosition =
+            Vector2 desiredPosition =
                 localPointerPosition + pointerOffset;
 
-            SnapInsideMovementArea();
+            rectTransform.anchoredPosition =
+                GetClampedPosition(desiredPosition);
         }
     }
 
     public void OnEndDrag(PointerEventData eventData)
     {
-        if (!canDrag || !isDragging)
+        if (!isDragging)
         {
             return;
         }
 
         isDragging = false;
 
-        canvasGroup.blocksRaycasts = true;
+        canvasGroup.blocksRaycasts = canDrag;
         canvasGroup.alpha = 1f;
+
+        if (!canDrag ||
+            roundController == null ||
+            !roundController.CanInteract)
+        {
+            return;
+        }
 
         roundController.HandlePieceDropped(this);
     }
 
     public void ReturnToDragOrigin()
     {
-        rectTransform.anchoredPosition = positionBeforeDrag;
+        SetAnchoredPosition(positionBeforeDrag);
     }
 
     public void SetAnchoredPosition(Vector2 position)
     {
-        rectTransform.anchoredPosition = position;
-        SnapInsideMovementArea();
+        if (rectTransform == null)
+        {
+            return;
+        }
+
+        rectTransform.anchoredPosition =
+            GetClampedPosition(position);
+    }
+
+    public void CenterInMovementArea()
+    {
+        SetAnchoredPosition(Vector2.zero);
     }
 
     public void SetInteractable(bool interactable)
     {
         canDrag = interactable;
+        isDragging = false;
 
-        if (canvasGroup != null)
+        if (canvasGroup == null)
         {
-            canvasGroup.interactable = interactable;
-            canvasGroup.blocksRaycasts = interactable;
+            return;
         }
+
+        canvasGroup.interactable = interactable;
+        canvasGroup.blocksRaycasts = interactable;
+        canvasGroup.alpha = 1f;
     }
 
     public void SnapInsideMovementArea()
     {
-        if (movementArea == null || rectTransform == null)
+        if (rectTransform == null)
         {
             return;
+        }
+
+        rectTransform.anchoredPosition =
+            GetClampedPosition(
+                rectTransform.anchoredPosition
+            );
+    }
+
+    private Vector2 GetClampedPosition(Vector2 desiredPosition)
+    {
+        if (movementArea == null || rectTransform == null)
+        {
+            return desiredPosition;
         }
 
         Rect areaRect = movementArea.rect;
         Rect pieceRect = rectTransform.rect;
 
-        float halfWidth = pieceRect.width * 0.5f;
-        float halfHeight = pieceRect.height * 0.5f;
+        float safePadding = Mathf.Max(
+            0f,
+            movementPadding
+        );
 
-        float minX = areaRect.xMin + halfWidth;
-        float maxX = areaRect.xMax - halfWidth;
+        float halfWidth =
+            pieceRect.width * 0.5f;
 
-        float minY = areaRect.yMin + halfHeight;
-        float maxY = areaRect.yMax - halfHeight;
+        float halfHeight =
+            pieceRect.height * 0.5f;
 
-        Vector2 position = rectTransform.anchoredPosition;
+        float minimumX =
+            areaRect.xMin +
+            halfWidth +
+            safePadding;
 
-        position.x = minX <= maxX
-            ? Mathf.Clamp(position.x, minX, maxX)
-            : 0f;
+        float maximumX =
+            areaRect.xMax -
+            halfWidth -
+            safePadding;
 
-        position.y = minY <= maxY
-            ? Mathf.Clamp(position.y, minY, maxY)
-            : 0f;
+        float minimumY =
+            areaRect.yMin +
+            halfHeight +
+            safePadding;
 
-        rectTransform.anchoredPosition = position;
+        float maximumY =
+            areaRect.yMax -
+            halfHeight -
+            safePadding;
+
+        Vector2 clampedPosition = desiredPosition;
+
+        /*
+         * Si una pieza es demasiado ancha para respetar el margen,
+         * se mantiene centrada horizontalmente.
+         */
+        if (minimumX <= maximumX)
+        {
+            clampedPosition.x = Mathf.Clamp(
+                desiredPosition.x,
+                minimumX,
+                maximumX
+            );
+        }
+        else
+        {
+            clampedPosition.x = 0f;
+        }
+
+        /*
+         * Si una pieza es demasiado alta para respetar el margen,
+         * se mantiene centrada verticalmente.
+         */
+        if (minimumY <= maximumY)
+        {
+            clampedPosition.y = Mathf.Clamp(
+                desiredPosition.y,
+                minimumY,
+                maximumY
+            );
+        }
+        else
+        {
+            clampedPosition.y = 0f;
+        }
+
+        return clampedPosition;
     }
 }

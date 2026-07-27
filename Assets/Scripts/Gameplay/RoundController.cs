@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,23 +18,53 @@ public class RoundController : MonoBehaviour
     [SerializeField] private bool shuffleInitialPieces = true;
 
     [Header("Distribución")]
-    [SerializeField] private float spawnMargin = 30f;
-    [SerializeField] private int maximumSpawnAttempts = 50;
+    [Tooltip("Margen adicional utilizado para distribuir las piezas al comenzar.")]
+    [SerializeField, Min(0f)] private float spawnMargin = 40f;
+
+    [SerializeField, Min(1)]
+    private int maximumSpawnAttempts = 50;
+
+    [Header("Final de ronda")]
+    [Tooltip("Tiempo durante el cual se muestra la frase centrada antes del panel de victoria.")]
+    [SerializeField, Min(0f)]
+    private float finalPhraseDisplayDelay = 0.65f;
+
+    [SerializeField]
+    private bool centerFinalPhrase = true;
 
     private readonly List<PhrasePiece> activePieces =
         new List<PhrasePiece>();
 
     private int moves;
     private float elapsedTime;
+
     private bool roundIsRunning;
     private bool roundHasEnded;
+    private bool isResolvingMove;
 
-    private void Start()
+    private Coroutine endRoundCoroutine;
+
+    public bool CanInteract =>
+        roundIsRunning &&
+        !roundHasEnded &&
+        !isResolvingMove;
+
+    private IEnumerator Start()
     {
-        if (startAutomatically)
+        if (!startAutomatically)
         {
-            StartRound();
+            yield break;
         }
+
+        /*
+         * Esperamos un frame para que el Canvas y el PlayArea
+         * calculen correctamente sus dimensiones.
+         */
+        yield return null;
+
+        Canvas.ForceUpdateCanvases();
+
+        StartRound();
     }
 
     private void Update()
@@ -56,45 +87,17 @@ public class RoundController : MonoBehaviour
     {
         ClearCurrentRound();
 
-        if (phrase == null)
+        if (!ValidateRoundConfiguration())
         {
-            Debug.LogError(
-                "RoundController no tiene una PhraseDefinition configurada."
-            );
             return;
-        }
-
-        if (!phrase.IsValid(out string errorMessage))
-        {
-            Debug.LogError($"La frase no es válida: {errorMessage}");
-            return;
-        }
-
-        if (phrasePiecePrefab == null)
-        {
-            Debug.LogError(
-                "No se asignó el prefab PhrasePiece."
-            );
-            return;
-        }
-
-        if (playArea == null)
-        {
-            Debug.LogError(
-                "No se asignó el PlayArea."
-            );
-            return;
-        }
-
-        if (rootCanvas == null)
-        {
-            rootCanvas = GetComponentInParent<Canvas>();
         }
 
         moves = 0;
         elapsedTime = 0f;
+
         roundHasEnded = false;
         roundIsRunning = true;
+        isResolvingMove = false;
 
         if (hudController != null)
         {
@@ -104,7 +107,8 @@ public class RoundController : MonoBehaviour
             );
         }
 
-        List<int> fragmentIndexes = CreateFragmentIndexList();
+        List<int> fragmentIndexes =
+            CreateFragmentIndexList();
 
         if (shuffleInitialPieces)
         {
@@ -113,7 +117,8 @@ public class RoundController : MonoBehaviour
 
         for (int i = 0; i < fragmentIndexes.Count; i++)
         {
-            int fragmentIndex = fragmentIndexes[i];
+            int fragmentIndex =
+                fragmentIndexes[i];
 
             PhrasePiece piece = CreatePiece(
                 fragmentIndex,
@@ -133,9 +138,7 @@ public class RoundController : MonoBehaviour
 
     public void HandlePieceDropped(PhrasePiece draggedPiece)
     {
-        if (!roundIsRunning ||
-            roundHasEnded ||
-            draggedPiece == null)
+        if (!CanInteract || draggedPiece == null)
         {
             return;
         }
@@ -149,10 +152,66 @@ public class RoundController : MonoBehaviour
         {
             draggedPiece.ReturnToDragOrigin();
             UpdateHUD();
+
             return;
         }
 
         MergePieces(draggedPiece, mergeTarget);
+    }
+
+    private bool ValidateRoundConfiguration()
+    {
+        if (phrase == null)
+        {
+            Debug.LogError(
+                "RoundController no tiene una PhraseDefinition configurada."
+            );
+
+            return false;
+        }
+
+        if (!phrase.IsValid(out string errorMessage))
+        {
+            Debug.LogError(
+                $"La frase no es válida: {errorMessage}"
+            );
+
+            return false;
+        }
+
+        if (phrasePiecePrefab == null)
+        {
+            Debug.LogError(
+                "No se asignó Phrase Piece Prefab en RoundController."
+            );
+
+            return false;
+        }
+
+        if (playArea == null)
+        {
+            Debug.LogError(
+                "No se asignó Play Area en RoundController."
+            );
+
+            return false;
+        }
+
+        if (rootCanvas == null)
+        {
+            rootCanvas = playArea.GetComponentInParent<Canvas>();
+        }
+
+        if (rootCanvas == null)
+        {
+            Debug.LogError(
+                "No se encontró un Canvas para la ronda."
+            );
+
+            return false;
+        }
+
+        return true;
     }
 
     private PhrasePiece FindBestValidMergeTarget(
@@ -168,7 +227,8 @@ public class RoundController : MonoBehaviour
         {
             PhrasePiece candidate = activePieces[i];
 
-            if (candidate == null || candidate == draggedPiece)
+            if (candidate == null ||
+                candidate == draggedPiece)
             {
                 continue;
             }
@@ -192,11 +252,13 @@ public class RoundController : MonoBehaviour
                     candidateRect
                 );
 
-            if (overlapArea > bestOverlapArea)
+            if (overlapArea <= bestOverlapArea)
             {
-                bestOverlapArea = overlapArea;
-                bestTarget = candidate;
+                continue;
             }
+
+            bestOverlapArea = overlapArea;
+            bestTarget = candidate;
         }
 
         return bestTarget;
@@ -222,6 +284,8 @@ public class RoundController : MonoBehaviour
         PhrasePiece firstPiece,
         PhrasePiece secondPiece)
     {
+        isResolvingMove = true;
+
         int newStartIndex = Mathf.Min(
             firstPiece.StartIndex,
             secondPiece.StartIndex
@@ -241,6 +305,13 @@ public class RoundController : MonoBehaviour
         activePieces.Remove(firstPiece);
         activePieces.Remove(secondPiece);
 
+        /*
+         * Los desactivamos inmediatamente para evitar que continúen
+         * visibles durante el frame en el que Unity los destruye.
+         */
+        firstPiece.gameObject.SetActive(false);
+        secondPiece.gameObject.SetActive(false);
+
         Destroy(firstPiece.gameObject);
         Destroy(secondPiece.gameObject);
 
@@ -252,7 +323,14 @@ public class RoundController : MonoBehaviour
         mergedPiece.SetAnchoredPosition(mergePosition);
 
         UpdateHUD();
-        CheckVictory(mergedPiece);
+
+        bool victoryDetected =
+            CheckVictory(mergedPiece);
+
+        if (!victoryDetected)
+        {
+            isResolvingMove = false;
+        }
     }
 
     private PhrasePiece CreatePiece(
@@ -296,7 +374,8 @@ public class RoundController : MonoBehaviour
             return;
         }
 
-        Vector2 fallbackPosition = Vector2.zero;
+        Vector2 fallbackPosition =
+            Vector2.zero;
 
         for (int attempt = 0;
              attempt < maximumSpawnAttempts;
@@ -305,9 +384,12 @@ public class RoundController : MonoBehaviour
             Vector2 candidatePosition =
                 GetRandomPositionInsidePlayArea(piece);
 
-            piece.SetAnchoredPosition(candidatePosition);
+            piece.SetAnchoredPosition(
+                candidatePosition
+            );
 
-            fallbackPosition = candidatePosition;
+            fallbackPosition =
+                piece.AnchoredPosition;
 
             if (!OverlapsAnotherPiece(piece))
             {
@@ -315,6 +397,10 @@ public class RoundController : MonoBehaviour
             }
         }
 
+        /*
+         * Si no encontramos una posición perfecta después
+         * de varios intentos, utilizamos la última posición válida.
+         */
         piece.SetAnchoredPosition(fallbackPosition);
     }
 
@@ -324,30 +410,55 @@ public class RoundController : MonoBehaviour
         Rect areaRect = playArea.rect;
         Rect pieceRect = piece.RectTransform.rect;
 
-        float halfWidth = pieceRect.width * 0.5f;
-        float halfHeight = pieceRect.height * 0.5f;
+        float halfWidth =
+            pieceRect.width * 0.5f;
+
+        float halfHeight =
+            pieceRect.height * 0.5f;
+
+        /*
+         * Utilizamos el margen más grande entre el spawn
+         * y el margen propio de la pieza.
+         */
+        float effectiveMargin = Mathf.Max(
+            spawnMargin,
+            piece.MovementPadding
+        );
 
         float minimumX =
-            areaRect.xMin + halfWidth + spawnMargin;
+            areaRect.xMin +
+            halfWidth +
+            effectiveMargin;
 
         float maximumX =
-            areaRect.xMax - halfWidth - spawnMargin;
+            areaRect.xMax -
+            halfWidth -
+            effectiveMargin;
 
         float minimumY =
-            areaRect.yMin + halfHeight + spawnMargin;
+            areaRect.yMin +
+            halfHeight +
+            effectiveMargin;
 
         float maximumY =
-            areaRect.yMax - halfHeight - spawnMargin;
+            areaRect.yMax -
+            halfHeight -
+            effectiveMargin;
 
-        float x = minimumX <= maximumX
-            ? Random.Range(minimumX, maximumX)
-            : 0f;
+        float randomX =
+            minimumX <= maximumX
+                ? Random.Range(minimumX, maximumX)
+                : 0f;
 
-        float y = minimumY <= maximumY
-            ? Random.Range(minimumY, maximumY)
-            : 0f;
+        float randomY =
+            minimumY <= maximumY
+                ? Random.Range(minimumY, maximumY)
+                : 0f;
 
-        return new Vector2(x, y);
+        return new Vector2(
+            randomX,
+            randomY
+        );
     }
 
     private bool OverlapsAnotherPiece(
@@ -358,7 +469,8 @@ public class RoundController : MonoBehaviour
 
         for (int i = 0; i < activePieces.Count; i++)
         {
-            PhrasePiece otherPiece = activePieces[i];
+            PhrasePiece otherPiece =
+                activePieces[i];
 
             if (otherPiece == null ||
                 otherPiece == pieceToCheck)
@@ -378,11 +490,11 @@ public class RoundController : MonoBehaviour
         return false;
     }
 
-    private void CheckVictory(PhrasePiece finalPiece)
+    private bool CheckVictory(PhrasePiece finalPiece)
     {
         if (activePieces.Count != 1)
         {
-            return;
+            return false;
         }
 
         bool containsEntirePhrase =
@@ -392,24 +504,51 @@ public class RoundController : MonoBehaviour
 
         if (!containsEntirePhrase)
         {
-            return;
+            return false;
         }
 
-        EndRound(finalPiece.PieceText);
-    }
-
-    private void EndRound(string completedPhrase)
-    {
         roundHasEnded = true;
         roundIsRunning = false;
+        isResolvingMove = true;
 
-        for (int i = 0; i < activePieces.Count; i++)
+        finalPiece.SetInteractable(false);
+        finalPiece.transform.SetAsLastSibling();
+
+        if (centerFinalPhrase)
         {
-            if (activePieces[i] != null)
-            {
-                activePieces[i].SetInteractable(false);
-            }
+            Canvas.ForceUpdateCanvases();
+            finalPiece.CenterInMovementArea();
         }
+
+        endRoundCoroutine = StartCoroutine(
+            FinishRoundSequence(finalPiece)
+        );
+
+        return true;
+    }
+
+    private IEnumerator FinishRoundSequence(
+        PhrasePiece finalPiece)
+    {
+        /*
+         * Dejamos visible la frase final en el centro antes
+         * de mostrar la interfaz de victoria.
+         */
+        if (finalPhraseDisplayDelay > 0f)
+        {
+            yield return new WaitForSecondsRealtime(
+                finalPhraseDisplayDelay
+            );
+        }
+
+        string completedPhrase =
+            finalPiece != null
+                ? finalPiece.PieceText
+                : PhraseTextFormatter.BuildText(
+                    phrase.Fragments,
+                    0,
+                    phrase.FragmentCount - 1
+                );
 
         if (hudController != null)
         {
@@ -423,6 +562,9 @@ public class RoundController : MonoBehaviour
         Debug.Log(
             $"Frase completada: {completedPhrase}"
         );
+
+        isResolvingMove = false;
+        endRoundCoroutine = null;
     }
 
     private void UpdateHUD()
@@ -433,15 +575,20 @@ public class RoundController : MonoBehaviour
         }
 
         hudController.SetMoves(moves);
+
         hudController.SetFragmentCount(
             activePieces.Count
         );
-        hudController.SetTime(elapsedTime);
+
+        hudController.SetTime(
+            elapsedTime
+        );
     }
 
     private List<int> CreateFragmentIndexList()
     {
-        List<int> indexes = new List<int>();
+        List<int> indexes =
+            new List<int>();
 
         for (int i = 0;
              i < phrase.FragmentCount;
@@ -462,20 +609,32 @@ public class RoundController : MonoBehaviour
             int randomIndex =
                 Random.Range(0, i + 1);
 
-            int temporaryValue = indexes[i];
-            indexes[i] = indexes[randomIndex];
-            indexes[randomIndex] = temporaryValue;
+            int temporaryValue =
+                indexes[i];
+
+            indexes[i] =
+                indexes[randomIndex];
+
+            indexes[randomIndex] =
+                temporaryValue;
         }
     }
 
     private Rect GetWorldRect(
         RectTransform rectTransform)
     {
-        Vector3[] corners = new Vector3[4];
+        Vector3[] corners =
+            new Vector3[4];
+
         rectTransform.GetWorldCorners(corners);
 
-        float width = corners[2].x - corners[0].x;
-        float height = corners[2].y - corners[0].y;
+        float width =
+            corners[2].x -
+            corners[0].x;
+
+        float height =
+            corners[2].y -
+            corners[0].y;
 
         return new Rect(
             corners[0].x,
@@ -491,14 +650,26 @@ public class RoundController : MonoBehaviour
     {
         float overlapWidth = Mathf.Max(
             0f,
-            Mathf.Min(firstRect.xMax, secondRect.xMax) -
-            Mathf.Max(firstRect.xMin, secondRect.xMin)
+            Mathf.Min(
+                firstRect.xMax,
+                secondRect.xMax
+            ) -
+            Mathf.Max(
+                firstRect.xMin,
+                secondRect.xMin
+            )
         );
 
         float overlapHeight = Mathf.Max(
             0f,
-            Mathf.Min(firstRect.yMax, secondRect.yMax) -
-            Mathf.Max(firstRect.yMin, secondRect.yMin)
+            Mathf.Min(
+                firstRect.yMax,
+                secondRect.yMax
+            ) -
+            Mathf.Max(
+                firstRect.yMin,
+                secondRect.yMin
+            )
         );
 
         return overlapWidth * overlapHeight;
@@ -506,18 +677,33 @@ public class RoundController : MonoBehaviour
 
     private void ClearCurrentRound()
     {
-        for (int i = 0; i < activePieces.Count; i++)
+        if (endRoundCoroutine != null)
         {
-            if (activePieces[i] != null)
+            StopCoroutine(endRoundCoroutine);
+            endRoundCoroutine = null;
+        }
+
+        for (int i = 0;
+             i < activePieces.Count;
+             i++)
+        {
+            PhrasePiece piece =
+                activePieces[i];
+
+            if (piece == null)
             {
-                Destroy(activePieces[i].gameObject);
+                continue;
             }
+
+            piece.gameObject.SetActive(false);
+            Destroy(piece.gameObject);
         }
 
         activePieces.Clear();
 
         roundIsRunning = false;
         roundHasEnded = false;
+        isResolvingMove = false;
 
         if (hudController != null)
         {
