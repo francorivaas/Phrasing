@@ -1,0 +1,51 @@
+﻿id,category,fullPhrase,fragments
+phrase_001,Cotidiana,El café se enfrió mientras buscaba mis llaves.,El café|se enfrió|mientras|buscaba|mis llaves|.
+phrase_002,Cotidiana,Siempre encuentro el control remoto debajo del almohadón.,Siempre|encuentro|el control remoto|debajo|del almohadón|.
+phrase_003,Cotidiana,"La alarma sonó, pero mi voluntad siguió durmiendo.","La alarma|sonó|,|pero|mi voluntad|siguió durmiendo|."
+phrase_004,Cotidiana,Hoy ordené el escritorio y perdí todo lo importante.,Hoy|ordené|el escritorio|y|perdí|todo lo importante|.
+phrase_005,Cotidiana,Salí temprano y llegué tarde de todos modos.,Salí temprano|y|llegué tarde|de todos modos|.
+phrase_006,Humor,Mi gato me ignora con una eficiencia admirable.,Mi gato|me ignora|con|una eficiencia|admirable|.
+phrase_007,Humor,Cociné una receta fácil y ensucié once platos.,Cociné|una receta fácil|y|ensucié|once platos|.
+phrase_008,Humor,¡El lunes llegó sin que nadie lo invitara!,¡|El lunes|llegó|sin que nadie|lo invitara|!
+phrase_009,Humor,Mi planta sobrevivió gracias a su enorme espíritu de lucha.,Mi planta|sobrevivió|gracias a|su enorme|espíritu de lucha|.
+phrase_010,Humor,"Intenté ser productivo, pero internet tenía otros planes.","Intenté|ser productivo|,|pero|internet|tenía otros planes|."
+phrase_011,Motivación,Cada paso pequeño también te acerca a una meta grande.,Cada paso pequeño|también|te acerca|a una meta grande|.
+phrase_012,Motivación,"No necesitas hacerlo perfecto, solo necesitas empezar.","No necesitas|hacerlo perfecto|,|solo|necesitas empezar|."
+phrase_013,Motivación,La constancia convierte los intentos en resultados.,La constancia|convierte|los intentos|en resultados|.
+phrase_014,Motivación,Hoy puede ser el comienzo de algo que todavía no imaginas.,Hoy puede ser|el comienzo|de algo|que todavía|no imaginas|.
+phrase_015,Motivación,"Respira, ajusta el rumbo y vuelve a intentarlo.","Respira|,|ajusta el rumbo|y|vuelve a intentarlo|."
+phrase_016,Tecnología,El teléfono se actualizó justo cuando más lo necesitaba.,El teléfono|se actualizó|justo cuando|más lo necesitaba|.
+phrase_017,Tecnología,Una buena contraseña protege más de lo que parece.,Una buena contraseña|protege|más de lo que|parece|.
+phrase_018,Tecnología,"La nube guardó mis archivos, pero no mis excusas.","La nube|guardó mis archivos|,|pero no|mis excusas|."
+phrase_019,Tecnología,¿Quién apagó el wifi en medio de la reunión?,¿|Quién apagó|el wifi|en medio|de la reunión|?
+phrase_020,Tecnología,El robot aprendió a barrer y luego pidió vacaciones.,El robot|aprendió a barrer|y luego|pidió vacaciones|.
+phrase_021,Naturaleza,La lluvia dibujó caminos sobre el vidrio.,La lluvia|dibujó caminos|sobre|el vidrio|.
+phrase_022,Naturaleza,El bosque guardaba un silencio lleno de sonidos.,El bosque|guardaba|un silencio|lleno de sonidos|.
+phrase_023,Naturaleza,Las nubes cambiaron de forma antes de cruzar la montaña.,Las nubes|cambiaron de forma|antes de|cruzar la montaña|.
+phrase_024,Naturaleza,Una hoja cayó despacio y el otoño pareció comenzar.,Una hoja|cayó despacio|y|el otoño|pareció comenzar|.
+phrase_025,Naturaleza,El río avanza sin preguntar cuánto falta.,El río|avanza|sin preguntar|cuánto falta|.
+phrase_026,Imaginación,La luna escondió una escalera detrás de la última estrella.,La luna|escondió una escalera|detrás de|la última estrella|.
+phrase_027,Imaginación,Mi sombra salió de paseo mientras yo seguía durmiendo.,Mi sombra|salió de paseo|mientras yo|seguía durmiendo|.
+phrase_028,Imaginación,El reloj retrocedió un minuto para corregir un viejo error.,El reloj|retrocedió un minuto|para corregir|un viejo error|.
+phrase_029,Imaginación,"En esa ciudad, los sueños pagaban el boleto del tren.","En esa ciudad|,|los sueños|pagaban|el boleto del tren|."
+phrase_030,Imaginación,Un dragón diminuto vivía dentro de la tetera azul.,Un dragón diminuto|vivía|dentro de|la tetera azul|.
+phrase_031,Misterio,"La puerta estaba cerrada, pero alguien había entrado.","La puerta|estaba cerrada|,|pero|alguien había entrado|."
+phrase_032,Misterio,"Cada medianoche, el retrato cambiaba de expresión.","Cada medianoche|,|el retrato|cambiaba|de expresión|."
+phrase_033,Misterio,Encontré una nota con mi nombre en una casa abandonada.,Encontré una nota|con mi nombre|en una casa|abandonada|.
+phrase_034,Misterio,El ascensor se detuvo en un piso que no existía.,El ascensor|se detuvo|en un piso|que no existía|.
+phrase_035,Misterio,"Nadie escuchó el golpe, excepto el perro del vecino.","Nadie escuchó|el golpe|,|excepto|el perro del vecino|."
+phrase_036,Viajes,El mejor camino no siempre aparece en el mapa.,El mejor camino|no siempre|aparece|en el mapa|.
+phrase_037,Viajes,La estación olía a café y a despedidas.,La estación|olía a café|y|a despedidas|.
+phrase_038,Viajes,Guardé una piedra de cada lugar que me hizo sentir en casa.,Guardé una piedra|de cada lugar|que me hizo|sentir en casa|.
+phrase_039,Viajes,Perderse también puede ser una forma de descubrir.,Perderse|también puede ser|una forma|de descubrir|.
+phrase_040,Viajes,El tren partió antes de que terminara mi última pregunta.,El tren partió|antes de que|terminara|mi última pregunta|.
+phrase_041,Animales,El perro esperó junto a la puerta como si conociera la hora.,El perro|esperó junto a la puerta|como si|conociera la hora|.
+phrase_042,Animales,Las hormigas trabajaban sin discutir el tamaño del problema.,Las hormigas|trabajaban|sin discutir|el tamaño del problema|.
+phrase_043,Animales,Un zorro cruzó el sendero y desapareció entre los árboles.,Un zorro|cruzó el sendero|y|desapareció|entre los árboles|.
+phrase_044,Animales,El loro repitió el secreto frente a toda la familia.,El loro|repitió el secreto|frente a|toda la familia|.
+phrase_045,Animales,"La tortuga llegó última, pero disfrutó todo el camino.","La tortuga|llegó última|,|pero|disfrutó todo el camino|."
+phrase_046,Sabiduría,Escuchar bien puede responder preguntas que nadie hizo.,Escuchar bien|puede responder|preguntas|que nadie hizo|.
+phrase_047,Sabiduría,Cambiar de opinión también puede ser una forma de aprender.,Cambiar de opinión|también|puede ser|una forma de aprender|.
+phrase_048,Sabiduría,"El tiempo no borra todo, pero cambia la mirada.","El tiempo|no borra todo|,|pero|cambia la mirada|."
+phrase_049,Sabiduría,"A veces, la respuesta aparece cuando dejamos de buscarla.","A veces|,|la respuesta|aparece|cuando dejamos de buscarla|."
+phrase_050,Sabiduría,Compartir una idea puede hacerla más grande sin quitarte nada.,Compartir una idea|puede hacerla|más grande|sin quitarte nada|.

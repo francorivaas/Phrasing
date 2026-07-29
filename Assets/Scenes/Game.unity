@@ -148,17 +148,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f4930fcab3202c24c866dba10717d161, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RoundController
-  phrase:
-    id: phrase_001
-    category: Futurama
-    fragments:
-    - "\xA1"
-    - "L\xE1vate"
-    - las
-    - orejas
-    - ','
-    - "terr\xEDcola"
-    - '!'
+  phrasesCsv: {fileID: 4900000, guid: 97b59b0ffc3822841a110222a27d7ac6, type: 3}
+  randomizePhraseOrder: 1
+  avoidRepeatsUntilExhausted: 1
   phrasePiecePrefab: {fileID: 4667294513326803043, guid: 33212093329e6fc42b69034d2dadd76c, type: 3}
   playArea: {fileID: 1764952652}
   rootCanvas: {fileID: 497871182}
@@ -1360,7 +1352,7 @@ RectTransform:
   m_GameObject: {fileID: 1147241667}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 3, z: 1}
+  m_LocalScale: {x: 1, y: 7.93, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1697757094}
@@ -1417,7 +1409,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 48104615}
         m_TargetAssemblyTypeName: RoundController, Assembly-CSharp
-        m_MethodName: RestartRound
+        m_MethodName: NextRound
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
