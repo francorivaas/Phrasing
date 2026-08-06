@@ -155,6 +155,7 @@ MonoBehaviour:
   playArea: {fileID: 1764952652}
   rootCanvas: {fileID: 497871182}
   hudController: {fileID: 1685558079}
+  memoryChallengeController: {fileID: 0}
   startAutomatically: 1
   shuffleInitialPieces: 1
   spawnMargin: 30
@@ -1187,6 +1188,37 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 847166460}
   m_CullTransparentMesh: 1
+--- !u!1 &937829216
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 937829217}
+  m_Layer: 0
+  m_Name: Memory challenge controller
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &937829217
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 937829216}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1013458494
 GameObject:
   m_ObjectHideFlags: 0
@@ -2147,7 +2179,7 @@ GameObject:
   - component: {fileID: 1859927251}
   - component: {fileID: 1859927250}
   m_Layer: 0
-  m_Name: music
+  m_Name: Music
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2386,3 +2418,4 @@ SceneRoots:
   - {fileID: 788545948}
   - {fileID: 48104616}
   - {fileID: 1859927251}
+  - {fileID: 937829217}

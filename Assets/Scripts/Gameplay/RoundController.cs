@@ -18,6 +18,7 @@ public class RoundController : MonoBehaviour
     [SerializeField] private RectTransform playArea;
     [SerializeField] private Canvas rootCanvas;
     [SerializeField] private HUDController hudController;
+    [SerializeField] private MemoryChallengeController memoryChallengeController;
 
     [Header("Inicio")]
     [SerializeField] private bool startAutomatically = true;
@@ -53,6 +54,7 @@ public class RoundController : MonoBehaviour
 
     private int moves;
     private float elapsedTime;
+    private int sessionRoundNumber;
 
     private bool roundIsRunning;
     private bool roundHasEnded;
@@ -64,7 +66,13 @@ public class RoundController : MonoBehaviour
     public bool CanInteract =>
         roundIsRunning &&
         !roundHasEnded &&
-        !isResolvingMove;
+        !isResolvingMove &&
+        (
+            memoryChallengeController == null ||
+            !memoryChallengeController.IsBlockingInput
+        );
+
+    public int SessionRoundNumber => sessionRoundNumber;
 
     public string CurrentPhraseId =>
         currentPhrase != null ? currentPhrase.Id : string.Empty;
@@ -91,7 +99,14 @@ public class RoundController : MonoBehaviour
 
     private void Update()
     {
-        if (!roundIsRunning || roundHasEnded)
+        if (
+            !roundIsRunning ||
+            roundHasEnded ||
+            (
+                memoryChallengeController != null &&
+                memoryChallengeController.IsBlockingInput
+            )
+        )
         {
             return;
         }
@@ -118,6 +133,8 @@ public class RoundController : MonoBehaviour
             {
                 return;
             }
+
+            sessionRoundNumber++;
         }
 
         StartCurrentPhrase();
@@ -157,6 +174,7 @@ public class RoundController : MonoBehaviour
             return;
         }
 
+        sessionRoundNumber++;
         StartCurrentPhrase();
     }
 
@@ -171,6 +189,7 @@ public class RoundController : MonoBehaviour
         currentPhrase = null;
         currentPhraseDatabaseIndex = -1;
         phraseOrderCursor = 0;
+        sessionRoundNumber = 0;
 
         if (EnsureDatabaseLoaded())
         {
@@ -392,6 +411,16 @@ public class RoundController : MonoBehaviour
         }
 
         UpdateHUD();
+
+        Canvas.ForceUpdateCanvases();
+
+        if (memoryChallengeController != null)
+        {
+            memoryChallengeController.BeginRound(
+                activePieces,
+                sessionRoundNumber
+            );
+        }
     }
 
     private bool ValidateSceneReferences()
@@ -562,6 +591,10 @@ public class RoundController : MonoBehaviour
             secondPiece.EndIndex
         );
 
+        bool resolvedHiddenMemory =
+            firstPiece.IsMemoryHidden ||
+            secondPiece.IsMemoryHidden;
+
         Vector2 mergePosition =
             secondPiece.AnchoredPosition;
 
@@ -585,6 +618,11 @@ public class RoundController : MonoBehaviour
         mergedPiece.SetAnchoredPosition(
             mergePosition
         );
+
+        if (resolvedHiddenMemory)
+        {
+            mergedPiece.RevealMemoryContent(false);
+        }
 
         UpdateHUD();
 
@@ -999,6 +1037,11 @@ public class RoundController : MonoBehaviour
 
     private void ClearCurrentRound()
     {
+        if (memoryChallengeController != null)
+        {
+            memoryChallengeController.CancelCurrentChallenge();
+        }
+
         if (endRoundCoroutine != null)
         {
             StopCoroutine(endRoundCoroutine);

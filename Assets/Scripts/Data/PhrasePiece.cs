@@ -75,6 +75,15 @@ public class PhrasePiece : MonoBehaviour,
     [SerializeField, Min(1f)]
     private float shakeFrequency = 22f;
 
+    [Header("Desafío de memoria")]
+    [Tooltip("Texto mostrado cuando el contenido de la pieza está oculto.")]
+    [SerializeField]
+    private string hiddenMemoryPlaceholder = "•••";
+
+    [Tooltip("Duración total del fundido al ocultar o revelar el texto.")]
+    [SerializeField, Min(0f)]
+    private float memoryTextTransitionDuration = 0.24f;
+
     private RoundController roundController;
     private RectTransform movementArea;
 
@@ -93,6 +102,10 @@ public class PhrasePiece : MonoBehaviour,
     private Vector2 shakeBasePosition;
     private bool hasShakeBasePosition;
 
+    private Coroutine memoryTextCoroutine;
+    private Color visibleLabelColor = Color.white;
+    private bool isMemoryHidden;
+
     public int StartIndex { get; private set; }
     public int EndIndex { get; private set; }
     public string PieceText { get; private set; }
@@ -101,6 +114,9 @@ public class PhrasePiece : MonoBehaviour,
     public Vector2 AnchoredPosition => rectTransform.anchoredPosition;
     public float MovementPadding => movementPadding;
     public bool IsDragging => isDragging;
+    public bool IsMemoryHidden => isMemoryHidden;
+    public float MemoryTextTransitionDuration =>
+        memoryTextTransitionDuration;
 
     public float PopAnimationDuration =>
         popGrowDuration + popReturnDuration;
@@ -125,6 +141,7 @@ public class PhrasePiece : MonoBehaviour,
     private void OnDisable()
     {
         StopAllFeedbackAnimations(false);
+        StopMemoryTextAnimation(false);
     }
 
     public void Initialize(
@@ -163,15 +180,20 @@ public class PhrasePiece : MonoBehaviour,
         label.enableWordWrapping = true;
         label.overflowMode = TextOverflowModes.Overflow;
 
+        visibleLabelColor = label.color;
+        isMemoryHidden = false;
+
         isDragging = false;
         isOverlappingWhileDragging = false;
 
+        StopMemoryTextAnimation(false);
         StopAllFeedbackAnimations(true);
         ResizeToText();
         SnapInsideMovementArea();
 
         RefreshTargetAlpha();
         ApplyAlphaImmediately(targetAlpha);
+        RestoreVisibleMemoryTextImmediately();
     }
 
     private void FindMissingReferences()
@@ -435,6 +457,71 @@ public class PhrasePiece : MonoBehaviour,
         );
     }
 
+    /// <summary>
+    /// Indica si el texto de esta pieza es suficientemente significativo
+    /// para utilizarlo como fragmento de memoria.
+    /// </summary>
+    public bool IsEligibleForMemoryChallenge(
+        int minimumReadableCharacters)
+    {
+        if (string.IsNullOrWhiteSpace(PieceText))
+        {
+            return false;
+        }
+
+        int readableCharacters = 0;
+
+        for (int i = 0; i < PieceText.Length; i++)
+        {
+            if (char.IsLetterOrDigit(PieceText[i]))
+            {
+                readableCharacters++;
+            }
+        }
+
+        return readableCharacters >=
+               Mathf.Max(1, minimumReadableCharacters);
+    }
+
+    /// <summary>
+    /// Oculta el contenido visible sin cambiar el tamaño,
+    /// la posición ni el texto interno usado por el gameplay.
+    /// </summary>
+    public void HideMemoryContent(bool animated = true)
+    {
+        if (label == null || isMemoryHidden)
+        {
+            return;
+        }
+
+        isMemoryHidden = true;
+
+        StartMemoryTextTransition(
+            string.IsNullOrWhiteSpace(hiddenMemoryPlaceholder)
+                ? "•••"
+                : hiddenMemoryPlaceholder,
+            animated
+        );
+    }
+
+    /// <summary>
+    /// Vuelve a mostrar el texto real de la pieza.
+    /// </summary>
+    public void RevealMemoryContent(bool animated = true)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        isMemoryHidden = false;
+
+        StartMemoryTextTransition(
+            PieceText,
+            animated
+        );
+    }
+
     public void SnapInsideMovementArea()
     {
         if (rectTransform == null)
@@ -589,6 +676,123 @@ public class PhrasePiece : MonoBehaviour,
         }
 
         hasShakeBasePosition = false;
+    }
+
+    private void StartMemoryTextTransition(
+        string targetText,
+        bool animated)
+    {
+        StopMemoryTextAnimation(false);
+
+        if (
+            !animated ||
+            memoryTextTransitionDuration <= 0f ||
+            !isActiveAndEnabled
+        )
+        {
+            label.text = targetText;
+            SetLabelAlpha(visibleLabelColor.a);
+            return;
+        }
+
+        memoryTextCoroutine = StartCoroutine(
+            MemoryTextTransitionRoutine(targetText)
+        );
+    }
+
+    private IEnumerator MemoryTextTransitionRoutine(
+        string targetText)
+    {
+        float halfDuration =
+            Mathf.Max(0.01f, memoryTextTransitionDuration * 0.5f);
+
+        float startingAlpha = label.color.a;
+        float elapsed = 0f;
+
+        while (elapsed < halfDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            float progress = Mathf.Clamp01(
+                elapsed / halfDuration
+            );
+
+            SetLabelAlpha(
+                Mathf.Lerp(
+                    startingAlpha,
+                    0f,
+                    progress
+                )
+            );
+
+            yield return null;
+        }
+
+        label.text = targetText;
+        SetLabelAlpha(0f);
+
+        elapsed = 0f;
+
+        while (elapsed < halfDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            float progress = Mathf.Clamp01(
+                elapsed / halfDuration
+            );
+
+            SetLabelAlpha(
+                Mathf.Lerp(
+                    0f,
+                    visibleLabelColor.a,
+                    progress
+                )
+            );
+
+            yield return null;
+        }
+
+        SetLabelAlpha(visibleLabelColor.a);
+        memoryTextCoroutine = null;
+    }
+
+    private void StopMemoryTextAnimation(
+        bool restoreVisibleAlpha)
+    {
+        if (memoryTextCoroutine != null)
+        {
+            StopCoroutine(memoryTextCoroutine);
+            memoryTextCoroutine = null;
+        }
+
+        if (restoreVisibleAlpha && label != null)
+        {
+            SetLabelAlpha(visibleLabelColor.a);
+        }
+    }
+
+    private void RestoreVisibleMemoryTextImmediately()
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        isMemoryHidden = false;
+        label.text = PieceText;
+        label.color = visibleLabelColor;
+    }
+
+    private void SetLabelAlpha(float alpha)
+    {
+        if (label == null)
+        {
+            return;
+        }
+
+        Color currentColor = label.color;
+        currentColor.a = Mathf.Clamp01(alpha);
+        label.color = currentColor;
     }
 
     private void RefreshTargetAlpha()
