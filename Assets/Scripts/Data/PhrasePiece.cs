@@ -26,6 +26,28 @@ public class PhrasePiece : MonoBehaviour,
     [Tooltip("Separación mínima entre la pieza y los bordes del PlayArea.")]
     [SerializeField, Min(0f)] private float movementPadding = 40f;
 
+    [Header("Opacidad durante el arrastre")]
+    [Tooltip(
+        "Opacidad aplicada a la pieza arrastrada cuando " +
+        "se superpone con otra pieza."
+    )]
+    [SerializeField, Range(0.05f, 1f)]
+    private float overlappingDragAlpha = 0.35f;
+
+    [Tooltip(
+        "Opacidad de la pieza mientras se arrastra, " +
+        "pero todavía no está sobre otra pieza."
+    )]
+    [SerializeField, Range(0.05f, 1f)]
+    private float normalDragAlpha = 1f;
+
+    [Tooltip(
+        "Velocidad de transición de la opacidad. " +
+        "Usa 0 para un cambio instantáneo."
+    )]
+    [SerializeField, Min(0f)]
+    private float alphaTransitionSpeed = 10f;
+
     private RoundController roundController;
     private RectTransform movementArea;
 
@@ -34,6 +56,9 @@ public class PhrasePiece : MonoBehaviour,
 
     private bool canDrag = true;
     private bool isDragging;
+    private bool isOverlappingWhileDragging;
+
+    private float targetAlpha = 1f;
 
     public int StartIndex { get; private set; }
     public int EndIndex { get; private set; }
@@ -42,6 +67,18 @@ public class PhrasePiece : MonoBehaviour,
     public RectTransform RectTransform => rectTransform;
     public Vector2 AnchoredPosition => rectTransform.anchoredPosition;
     public float MovementPadding => movementPadding;
+    public bool IsDragging => isDragging;
+
+    private void Awake()
+    {
+        FindMissingReferences();
+        ApplyAlphaImmediately(1f);
+    }
+
+    private void Update()
+    {
+        UpdateVisualAlpha();
+    }
 
     public void Initialize(
         RoundController controller,
@@ -64,7 +101,7 @@ public class PhrasePiece : MonoBehaviour,
         if (label == null)
         {
             Debug.LogError(
-                $"La pieza {name} no tiene asignado un componente TMP_Text."
+                $"La pieza {name} no tiene asignado un TMP_Text."
             );
 
             return;
@@ -74,8 +111,14 @@ public class PhrasePiece : MonoBehaviour,
         label.enableWordWrapping = true;
         label.overflowMode = TextOverflowModes.Overflow;
 
+        isDragging = false;
+        isOverlappingWhileDragging = false;
+
         ResizeToText();
         SnapInsideMovementArea();
+
+        RefreshTargetAlpha();
+        ApplyAlphaImmediately(targetAlpha);
     }
 
     private void FindMissingReferences()
@@ -108,10 +151,6 @@ public class PhrasePiece : MonoBehaviour,
             return;
         }
 
-        /*
-         * Todas las piezas utilizan el centro del PlayArea
-         * como origen de coordenadas.
-         */
         rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
         rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
         rectTransform.pivot = new Vector2(0.5f, 0.5f);
@@ -179,15 +218,21 @@ public class PhrasePiece : MonoBehaviour,
         }
 
         isDragging = true;
-        positionBeforeDrag = rectTransform.anchoredPosition;
+        isOverlappingWhileDragging = false;
+
+        positionBeforeDrag =
+            rectTransform.anchoredPosition;
 
         /*
-         * Coloca la pieza delante de las demás mientras se arrastra.
+         * La pieza arrastrada se dibuja delante.
+         * Después bajará su opacidad al superponerse,
+         * permitiendo ver claramente la pieza inferior.
          */
         transform.SetAsLastSibling();
 
         canvasGroup.blocksRaycasts = false;
-        canvasGroup.alpha = 0.9f;
+
+        RefreshTargetAlpha();
 
         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
                 movementArea,
@@ -234,9 +279,11 @@ public class PhrasePiece : MonoBehaviour,
         }
 
         isDragging = false;
+        isOverlappingWhileDragging = false;
 
         canvasGroup.blocksRaycasts = canDrag;
-        canvasGroup.alpha = 1f;
+
+        RefreshTargetAlpha();
 
         if (!canDrag ||
             roundController == null ||
@@ -273,15 +320,36 @@ public class PhrasePiece : MonoBehaviour,
     {
         canDrag = interactable;
         isDragging = false;
+        isOverlappingWhileDragging = false;
 
-        if (canvasGroup == null)
+        if (canvasGroup != null)
+        {
+            canvasGroup.interactable = interactable;
+            canvasGroup.blocksRaycasts = interactable;
+        }
+
+        RefreshTargetAlpha();
+    }
+
+    /// <summary>
+    /// El controlador de superposición llama a este método
+    /// para indicar si la pieza arrastrada está sobre otra.
+    /// </summary>
+    public void SetDraggingOverlapState(bool isOverlapping)
+    {
+        if (!isDragging)
+        {
+            isOverlapping = false;
+        }
+
+        if (isOverlappingWhileDragging == isOverlapping)
         {
             return;
         }
 
-        canvasGroup.interactable = interactable;
-        canvasGroup.blocksRaycasts = interactable;
-        canvasGroup.alpha = 1f;
+        isOverlappingWhileDragging = isOverlapping;
+
+        RefreshTargetAlpha();
     }
 
     public void SnapInsideMovementArea()
@@ -297,6 +365,49 @@ public class PhrasePiece : MonoBehaviour,
             );
     }
 
+    private void RefreshTargetAlpha()
+    {
+        if (!isDragging)
+        {
+            targetAlpha = 1f;
+            return;
+        }
+
+        targetAlpha = isOverlappingWhileDragging
+            ? overlappingDragAlpha
+            : normalDragAlpha;
+    }
+
+    private void UpdateVisualAlpha()
+    {
+        if (canvasGroup == null)
+        {
+            return;
+        }
+
+        if (alphaTransitionSpeed <= 0f)
+        {
+            canvasGroup.alpha = targetAlpha;
+            return;
+        }
+
+        canvasGroup.alpha = Mathf.MoveTowards(
+            canvasGroup.alpha,
+            targetAlpha,
+            alphaTransitionSpeed * Time.unscaledDeltaTime
+        );
+    }
+
+    private void ApplyAlphaImmediately(float alpha)
+    {
+        if (canvasGroup == null)
+        {
+            return;
+        }
+
+        canvasGroup.alpha = Mathf.Clamp01(alpha);
+    }
+
     private Vector2 GetClampedPosition(Vector2 desiredPosition)
     {
         if (movementArea == null || rectTransform == null)
@@ -307,10 +418,8 @@ public class PhrasePiece : MonoBehaviour,
         Rect areaRect = movementArea.rect;
         Rect pieceRect = rectTransform.rect;
 
-        float safePadding = Mathf.Max(
-            0f,
-            movementPadding
-        );
+        float safePadding =
+            Mathf.Max(0f, movementPadding);
 
         float halfWidth =
             pieceRect.width * 0.5f;
@@ -340,10 +449,6 @@ public class PhrasePiece : MonoBehaviour,
 
         Vector2 clampedPosition = desiredPosition;
 
-        /*
-         * Si una pieza es demasiado ancha para respetar el margen,
-         * se mantiene centrada horizontalmente.
-         */
         if (minimumX <= maximumX)
         {
             clampedPosition.x = Mathf.Clamp(
@@ -357,10 +462,6 @@ public class PhrasePiece : MonoBehaviour,
             clampedPosition.x = 0f;
         }
 
-        /*
-         * Si una pieza es demasiado alta para respetar el margen,
-         * se mantiene centrada verticalmente.
-         */
         if (minimumY <= maximumY)
         {
             clampedPosition.y = Mathf.Clamp(
