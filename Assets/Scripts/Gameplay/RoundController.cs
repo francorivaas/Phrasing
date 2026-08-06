@@ -59,6 +59,7 @@ public class RoundController : MonoBehaviour
     private bool isResolvingMove;
 
     private Coroutine endRoundCoroutine;
+    private Coroutine mergeResolutionCoroutine;
 
     public bool CanInteract =>
         roundIsRunning &&
@@ -186,17 +187,39 @@ public class RoundController : MonoBehaviour
 
         moves++;
 
-        PhrasePiece mergeTarget =
+        /*
+         * Primero buscamos una conexión válida. Así, si la pieza
+         * toca más de un fragmento, priorizamos cualquier opción
+         * válida por encima de una superposición incorrecta.
+         */
+        PhrasePiece validMergeTarget =
             FindBestValidMergeTarget(draggedPiece);
 
-        if (mergeTarget == null)
+        if (validMergeTarget != null)
         {
-            draggedPiece.ReturnToDragOrigin();
-            UpdateHUD();
+            MergePieces(
+                draggedPiece,
+                validMergeTarget
+            );
+
             return;
         }
 
-        MergePieces(draggedPiece, mergeTarget);
+        /*
+         * No hubo una conexión válida. Buscamos la pieza con la
+         * mayor superposición para aplicarle el shake.
+         */
+        PhrasePiece attemptedTarget =
+            FindBestOverlapTarget(draggedPiece);
+
+        draggedPiece.ReturnToDragOrigin();
+
+        if (attemptedTarget != null)
+        {
+            attemptedTarget.PlayShakeAnimation();
+        }
+
+        UpdateHUD();
     }
 
     private bool EnsureDatabaseLoaded()
@@ -237,10 +260,6 @@ public class RoundController : MonoBehaviour
         {
             Shuffle(phraseOrder);
 
-            /*
-             * Al comenzar un nuevo ciclo evitamos que la primera frase
-             * sea igual a la última del ciclo anterior.
-             */
             if (
                 phraseOrder.Count > 1 &&
                 currentPhraseDatabaseIndex >= 0 &&
@@ -287,13 +306,15 @@ public class RoundController : MonoBehaviour
                 selectedIndex == currentPhraseDatabaseIndex
             )
             {
-                selectedIndex = (selectedIndex + 1) % phraseDatabase.Count;
+                selectedIndex =
+                    (selectedIndex + 1) % phraseDatabase.Count;
             }
         }
         else
         {
             selectedIndex =
-                (currentPhraseDatabaseIndex + 1) % phraseDatabase.Count;
+                (currentPhraseDatabaseIndex + 1) %
+                phraseDatabase.Count;
         }
 
         currentPhraseDatabaseIndex = selectedIndex;
@@ -313,7 +334,10 @@ public class RoundController : MonoBehaviour
 
         if (currentPhrase == null)
         {
-            Debug.LogError("No hay una frase actual para iniciar.");
+            Debug.LogError(
+                "No hay una frase actual para iniciar."
+            );
+
             return;
         }
 
@@ -346,7 +370,8 @@ public class RoundController : MonoBehaviour
             );
         }
 
-        List<int> fragmentIndexes = CreateFragmentIndexList();
+        List<int> fragmentIndexes =
+            CreateFragmentIndexList();
 
         if (shuffleInitialPieces)
         {
@@ -355,7 +380,8 @@ public class RoundController : MonoBehaviour
 
         for (int i = 0; i < fragmentIndexes.Count; i++)
         {
-            int fragmentIndex = fragmentIndexes[i];
+            int fragmentIndex =
+                fragmentIndexes[i];
 
             PhrasePiece piece = CreatePiece(
                 fragmentIndex,
@@ -390,12 +416,16 @@ public class RoundController : MonoBehaviour
 
         if (rootCanvas == null)
         {
-            rootCanvas = playArea.GetComponentInParent<Canvas>();
+            rootCanvas =
+                playArea.GetComponentInParent<Canvas>();
         }
 
         if (rootCanvas == null)
         {
-            Debug.LogError("No se encontró un Canvas para la ronda.");
+            Debug.LogError(
+                "No se encontró un Canvas para la ronda."
+            );
+
             return false;
         }
 
@@ -408,24 +438,33 @@ public class RoundController : MonoBehaviour
         PhrasePiece bestTarget = null;
         float bestOverlapArea = 0f;
 
-        Rect draggedRect = GetWorldRect(
-            draggedPiece.RectTransform
-        );
+        Rect draggedRect =
+            GetWorldRect(
+                draggedPiece.RectTransform
+            );
 
         for (int i = 0; i < activePieces.Count; i++)
         {
             PhrasePiece candidate = activePieces[i];
 
-            if (candidate == null || candidate == draggedPiece)
+            if (candidate == null ||
+                candidate == draggedPiece)
             {
                 continue;
             }
 
-            Rect candidateRect = GetWorldRect(
-                candidate.RectTransform
-            );
+            Rect candidateRect =
+                GetWorldRect(
+                    candidate.RectTransform
+                );
 
-            if (!draggedRect.Overlaps(candidateRect))
+            float overlapArea =
+                CalculateOverlapArea(
+                    draggedRect,
+                    candidateRect
+                );
+
+            if (overlapArea <= 0f)
             {
                 continue;
             }
@@ -435,10 +474,49 @@ public class RoundController : MonoBehaviour
                 continue;
             }
 
-            float overlapArea = CalculateOverlapArea(
-                draggedRect,
-                candidateRect
+            if (overlapArea <= bestOverlapArea)
+            {
+                continue;
+            }
+
+            bestOverlapArea = overlapArea;
+            bestTarget = candidate;
+        }
+
+        return bestTarget;
+    }
+
+    private PhrasePiece FindBestOverlapTarget(
+        PhrasePiece draggedPiece)
+    {
+        PhrasePiece bestTarget = null;
+        float bestOverlapArea = 0f;
+
+        Rect draggedRect =
+            GetWorldRect(
+                draggedPiece.RectTransform
             );
+
+        for (int i = 0; i < activePieces.Count; i++)
+        {
+            PhrasePiece candidate = activePieces[i];
+
+            if (candidate == null ||
+                candidate == draggedPiece)
+            {
+                continue;
+            }
+
+            Rect candidateRect =
+                GetWorldRect(
+                    candidate.RectTransform
+                );
+
+            float overlapArea =
+                CalculateOverlapArea(
+                    draggedRect,
+                    candidateRect
+                );
 
             if (overlapArea <= bestOverlapArea)
             {
@@ -457,12 +535,15 @@ public class RoundController : MonoBehaviour
         PhrasePiece secondPiece)
     {
         bool firstGoesBeforeSecond =
-            firstPiece.EndIndex + 1 == secondPiece.StartIndex;
+            firstPiece.EndIndex + 1 ==
+            secondPiece.StartIndex;
 
         bool secondGoesBeforeFirst =
-            secondPiece.EndIndex + 1 == firstPiece.StartIndex;
+            secondPiece.EndIndex + 1 ==
+            firstPiece.StartIndex;
 
-        return firstGoesBeforeSecond || secondGoesBeforeFirst;
+        return firstGoesBeforeSecond ||
+               secondGoesBeforeFirst;
     }
 
     private void MergePieces(
@@ -481,7 +562,8 @@ public class RoundController : MonoBehaviour
             secondPiece.EndIndex
         );
 
-        Vector2 mergePosition = secondPiece.AnchoredPosition;
+        Vector2 mergePosition =
+            secondPiece.AnchoredPosition;
 
         firstPiece.SetInteractable(false);
         secondPiece.SetInteractable(false);
@@ -500,25 +582,61 @@ public class RoundController : MonoBehaviour
             newEndIndex
         );
 
-        mergedPiece.SetAnchoredPosition(mergePosition);
+        mergedPiece.SetAnchoredPosition(
+            mergePosition
+        );
 
         UpdateHUD();
 
-        bool victoryDetected = CheckVictory(mergedPiece);
+        bool victoryDetected =
+            CheckVictory(mergedPiece);
+
+        /*
+         * El pop se reproduce después de comprobar victoria.
+         * Si es la pieza final, primero se centra y luego hace
+         * el pop en el centro del tablero.
+         */
+        mergedPiece.PlayPopAnimation();
 
         if (!victoryDetected)
         {
-            isResolvingMove = false;
+            mergeResolutionCoroutine =
+                StartCoroutine(
+                    UnlockInteractionAfterPop(
+                        mergedPiece
+                    )
+                );
         }
     }
 
-    private PhrasePiece CreatePiece(int startIndex, int endIndex)
+    private IEnumerator UnlockInteractionAfterPop(
+        PhrasePiece mergedPiece)
     {
-        string pieceText = PhraseTextFormatter.BuildText(
-            currentPhrase.Fragments,
-            startIndex,
-            endIndex
-        );
+        float delay = mergedPiece != null
+            ? mergedPiece.PopAnimationDuration
+            : 0.3f;
+
+        if (delay > 0f)
+        {
+            yield return new WaitForSecondsRealtime(
+                delay
+            );
+        }
+
+        isResolvingMove = false;
+        mergeResolutionCoroutine = null;
+    }
+
+    private PhrasePiece CreatePiece(
+        int startIndex,
+        int endIndex)
+    {
+        string pieceText =
+            PhraseTextFormatter.BuildText(
+                currentPhrase.Fragments,
+                startIndex,
+                endIndex
+            );
 
         PhrasePiece newPiece = Instantiate(
             phrasePiecePrefab,
@@ -543,14 +661,16 @@ public class RoundController : MonoBehaviour
         return newPiece;
     }
 
-    private void PlacePieceRandomly(PhrasePiece piece)
+    private void PlacePieceRandomly(
+        PhrasePiece piece)
     {
         if (piece == null)
         {
             return;
         }
 
-        Vector2 fallbackPosition = Vector2.zero;
+        Vector2 fallbackPosition =
+            Vector2.zero;
 
         for (
             int attempt = 0;
@@ -559,10 +679,16 @@ public class RoundController : MonoBehaviour
         )
         {
             Vector2 candidatePosition =
-                GetRandomPositionInsidePlayArea(piece);
+                GetRandomPositionInsidePlayArea(
+                    piece
+                );
 
-            piece.SetAnchoredPosition(candidatePosition);
-            fallbackPosition = piece.AnchoredPosition;
+            piece.SetAnchoredPosition(
+                candidatePosition
+            );
+
+            fallbackPosition =
+                piece.AnchoredPosition;
 
             if (!OverlapsAnotherPiece(piece))
             {
@@ -570,63 +696,95 @@ public class RoundController : MonoBehaviour
             }
         }
 
-        piece.SetAnchoredPosition(fallbackPosition);
+        piece.SetAnchoredPosition(
+            fallbackPosition
+        );
     }
 
-    private Vector2 GetRandomPositionInsidePlayArea(PhrasePiece piece)
+    private Vector2 GetRandomPositionInsidePlayArea(
+        PhrasePiece piece)
     {
         Rect areaRect = playArea.rect;
-        Rect pieceRect = piece.RectTransform.rect;
+        Rect pieceRect =
+            piece.RectTransform.rect;
 
-        float halfWidth = pieceRect.width * 0.5f;
-        float halfHeight = pieceRect.height * 0.5f;
+        float halfWidth =
+            pieceRect.width * 0.5f;
 
-        float effectiveMargin = Mathf.Max(
-            spawnMargin,
-            piece.MovementPadding
-        );
+        float halfHeight =
+            pieceRect.height * 0.5f;
+
+        float effectiveMargin =
+            Mathf.Max(
+                spawnMargin,
+                piece.MovementPadding
+            );
 
         float minimumX =
-            areaRect.xMin + halfWidth + effectiveMargin;
+            areaRect.xMin +
+            halfWidth +
+            effectiveMargin;
 
         float maximumX =
-            areaRect.xMax - halfWidth - effectiveMargin;
+            areaRect.xMax -
+            halfWidth -
+            effectiveMargin;
 
         float minimumY =
-            areaRect.yMin + halfHeight + effectiveMargin;
+            areaRect.yMin +
+            halfHeight +
+            effectiveMargin;
 
         float maximumY =
-            areaRect.yMax - halfHeight - effectiveMargin;
+            areaRect.yMax -
+            halfHeight -
+            effectiveMargin;
 
-        float randomX = minimumX <= maximumX
-            ? Random.Range(minimumX, maximumX)
-            : 0f;
+        float randomX =
+            minimumX <= maximumX
+                ? Random.Range(
+                    minimumX,
+                    maximumX
+                )
+                : 0f;
 
-        float randomY = minimumY <= maximumY
-            ? Random.Range(minimumY, maximumY)
-            : 0f;
+        float randomY =
+            minimumY <= maximumY
+                ? Random.Range(
+                    minimumY,
+                    maximumY
+                )
+                : 0f;
 
-        return new Vector2(randomX, randomY);
+        return new Vector2(
+            randomX,
+            randomY
+        );
     }
 
-    private bool OverlapsAnotherPiece(PhrasePiece pieceToCheck)
+    private bool OverlapsAnotherPiece(
+        PhrasePiece pieceToCheck)
     {
-        Rect pieceRect = GetWorldRect(
-            pieceToCheck.RectTransform
-        );
+        Rect pieceRect =
+            GetWorldRect(
+                pieceToCheck.RectTransform
+            );
 
         for (int i = 0; i < activePieces.Count; i++)
         {
-            PhrasePiece otherPiece = activePieces[i];
+            PhrasePiece otherPiece =
+                activePieces[i];
 
-            if (otherPiece == null || otherPiece == pieceToCheck)
+            if (otherPiece == null ||
+                otherPiece == pieceToCheck)
             {
                 continue;
             }
 
-            Rect otherRect = GetWorldRect(
-                otherPiece.RectTransform
-            );
+            Rect otherRect =
+                GetWorldRect(
+                    otherPiece.RectTransform
+                );
 
             if (pieceRect.Overlaps(otherRect))
             {
@@ -637,7 +795,8 @@ public class RoundController : MonoBehaviour
         return false;
     }
 
-    private bool CheckVictory(PhrasePiece finalPiece)
+    private bool CheckVictory(
+        PhrasePiece finalPiece)
     {
         if (activePieces.Count != 1)
         {
@@ -646,7 +805,8 @@ public class RoundController : MonoBehaviour
 
         bool containsEntirePhrase =
             finalPiece.StartIndex == 0 &&
-            finalPiece.EndIndex == currentPhrase.FragmentCount - 1;
+            finalPiece.EndIndex ==
+            currentPhrase.FragmentCount - 1;
 
         if (!containsEntirePhrase)
         {
@@ -667,14 +827,33 @@ public class RoundController : MonoBehaviour
         }
 
         endRoundCoroutine = StartCoroutine(
-            FinishRoundSequence(finalPiece)
+            FinishRoundSequence(
+                finalPiece,
+                finalPiece.PopAnimationDuration
+            )
         );
 
         return true;
     }
 
-    private IEnumerator FinishRoundSequence(PhrasePiece finalPiece)
+    private IEnumerator FinishRoundSequence(
+        PhrasePiece finalPiece,
+        float initialFeedbackDelay)
     {
+        /*
+         * Primero dejamos terminar el pop.
+         */
+        if (initialFeedbackDelay > 0f)
+        {
+            yield return new WaitForSecondsRealtime(
+                initialFeedbackDelay
+            );
+        }
+
+        /*
+         * Después mantenemos visible la frase final durante
+         * el tiempo configurado en el Inspector.
+         */
         if (finalPhraseDisplayDelay > 0f)
         {
             yield return new WaitForSecondsRealtime(
@@ -682,9 +861,10 @@ public class RoundController : MonoBehaviour
             );
         }
 
-        string completedPhrase = finalPiece != null
-            ? finalPiece.PieceText
-            : currentPhrase.FullPhrase;
+        string completedPhrase =
+            finalPiece != null
+                ? finalPiece.PieceText
+                : currentPhrase.FullPhrase;
 
         if (hudController != null)
         {
@@ -711,15 +891,24 @@ public class RoundController : MonoBehaviour
         }
 
         hudController.SetMoves(moves);
-        hudController.SetFragmentCount(activePieces.Count);
-        hudController.SetTime(elapsedTime);
+        hudController.SetFragmentCount(
+            activePieces.Count
+        );
+        hudController.SetTime(
+            elapsedTime
+        );
     }
 
     private List<int> CreateFragmentIndexList()
     {
-        List<int> indexes = new List<int>();
+        List<int> indexes =
+            new List<int>();
 
-        for (int i = 0; i < currentPhrase.FragmentCount; i++)
+        for (
+            int i = 0;
+            i < currentPhrase.FragmentCount;
+            i++
+        )
         {
             indexes.Add(i);
         }
@@ -729,23 +918,43 @@ public class RoundController : MonoBehaviour
 
     private void Shuffle(List<int> indexes)
     {
-        for (int i = indexes.Count - 1; i > 0; i--)
+        for (
+            int i = indexes.Count - 1;
+            i > 0;
+            i--
+        )
         {
-            int randomIndex = Random.Range(0, i + 1);
+            int randomIndex =
+                Random.Range(0, i + 1);
 
-            int temporaryValue = indexes[i];
-            indexes[i] = indexes[randomIndex];
-            indexes[randomIndex] = temporaryValue;
+            int temporaryValue =
+                indexes[i];
+
+            indexes[i] =
+                indexes[randomIndex];
+
+            indexes[randomIndex] =
+                temporaryValue;
         }
     }
 
-    private Rect GetWorldRect(RectTransform rectTransform)
+    private Rect GetWorldRect(
+        RectTransform rectTransform)
     {
-        Vector3[] corners = new Vector3[4];
-        rectTransform.GetWorldCorners(corners);
+        Vector3[] corners =
+            new Vector3[4];
 
-        float width = corners[2].x - corners[0].x;
-        float height = corners[2].y - corners[0].y;
+        rectTransform.GetWorldCorners(
+            corners
+        );
+
+        float width =
+            corners[2].x -
+            corners[0].x;
+
+        float height =
+            corners[2].y -
+            corners[0].y;
 
         return new Rect(
             corners[0].x,
@@ -759,17 +968,31 @@ public class RoundController : MonoBehaviour
         Rect firstRect,
         Rect secondRect)
     {
-        float overlapWidth = Mathf.Max(
-            0f,
-            Mathf.Min(firstRect.xMax, secondRect.xMax) -
-            Mathf.Max(firstRect.xMin, secondRect.xMin)
-        );
+        float overlapWidth =
+            Mathf.Max(
+                0f,
+                Mathf.Min(
+                    firstRect.xMax,
+                    secondRect.xMax
+                ) -
+                Mathf.Max(
+                    firstRect.xMin,
+                    secondRect.xMin
+                )
+            );
 
-        float overlapHeight = Mathf.Max(
-            0f,
-            Mathf.Min(firstRect.yMax, secondRect.yMax) -
-            Mathf.Max(firstRect.yMin, secondRect.yMin)
-        );
+        float overlapHeight =
+            Mathf.Max(
+                0f,
+                Mathf.Min(
+                    firstRect.yMax,
+                    secondRect.yMax
+                ) -
+                Mathf.Max(
+                    firstRect.yMin,
+                    secondRect.yMin
+                )
+            );
 
         return overlapWidth * overlapHeight;
     }
@@ -782,9 +1005,23 @@ public class RoundController : MonoBehaviour
             endRoundCoroutine = null;
         }
 
-        for (int i = 0; i < activePieces.Count; i++)
+        if (mergeResolutionCoroutine != null)
         {
-            PhrasePiece piece = activePieces[i];
+            StopCoroutine(
+                mergeResolutionCoroutine
+            );
+
+            mergeResolutionCoroutine = null;
+        }
+
+        for (
+            int i = 0;
+            i < activePieces.Count;
+            i++
+        )
+        {
+            PhrasePiece piece =
+                activePieces[i];
 
             if (piece == null)
             {

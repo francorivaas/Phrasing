@@ -1,3 +1,4 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -48,17 +49,49 @@ public class PhrasePiece : MonoBehaviour,
     [SerializeField, Min(0f)]
     private float alphaTransitionSpeed = 10f;
 
+    [Header("Animación de conexión correcta")]
+    [Tooltip("Escala máxima alcanzada durante el pop.")]
+    [SerializeField, Min(1f)]
+    private float popScaleMultiplier = 1.12f;
+
+    [Tooltip("Tiempo que tarda la pieza en agrandarse.")]
+    [SerializeField, Min(0.01f)]
+    private float popGrowDuration = 0.10f;
+
+    [Tooltip("Tiempo que tarda la pieza en volver a su escala normal.")]
+    [SerializeField, Min(0.01f)]
+    private float popReturnDuration = 0.16f;
+
+    [Header("Animación de conexión incorrecta")]
+    [Tooltip("Distancia horizontal máxima del shake.")]
+    [SerializeField, Min(0f)]
+    private float shakeDistance = 16f;
+
+    [Tooltip("Duración total del shake.")]
+    [SerializeField, Min(0.01f)]
+    private float shakeDuration = 0.26f;
+
+    [Tooltip("Cantidad aproximada de oscilaciones por segundo.")]
+    [SerializeField, Min(1f)]
+    private float shakeFrequency = 22f;
+
     private RoundController roundController;
     private RectTransform movementArea;
 
     private Vector2 positionBeforeDrag;
     private Vector2 pointerOffset;
+    private Vector3 restingScale = Vector3.one;
 
     private bool canDrag = true;
     private bool isDragging;
     private bool isOverlappingWhileDragging;
 
     private float targetAlpha = 1f;
+
+    private Coroutine popCoroutine;
+    private Coroutine shakeCoroutine;
+    private Vector2 shakeBasePosition;
+    private bool hasShakeBasePosition;
 
     public int StartIndex { get; private set; }
     public int EndIndex { get; private set; }
@@ -69,15 +102,29 @@ public class PhrasePiece : MonoBehaviour,
     public float MovementPadding => movementPadding;
     public bool IsDragging => isDragging;
 
+    public float PopAnimationDuration =>
+        popGrowDuration + popReturnDuration;
+
     private void Awake()
     {
         FindMissingReferences();
+
+        if (rectTransform != null)
+        {
+            restingScale = rectTransform.localScale;
+        }
+
         ApplyAlphaImmediately(1f);
     }
 
     private void Update()
     {
         UpdateVisualAlpha();
+    }
+
+    private void OnDisable()
+    {
+        StopAllFeedbackAnimations(false);
     }
 
     public void Initialize(
@@ -98,6 +145,11 @@ public class PhrasePiece : MonoBehaviour,
         FindMissingReferences();
         ConfigureRectTransform();
 
+        if (rectTransform != null)
+        {
+            restingScale = rectTransform.localScale;
+        }
+
         if (label == null)
         {
             Debug.LogError(
@@ -114,6 +166,7 @@ public class PhrasePiece : MonoBehaviour,
         isDragging = false;
         isOverlappingWhileDragging = false;
 
+        StopAllFeedbackAnimations(true);
         ResizeToText();
         SnapInsideMovementArea();
 
@@ -217,21 +270,21 @@ public class PhrasePiece : MonoBehaviour,
             return;
         }
 
+        /*
+         * Si la pieza estaba ejecutando un shake anterior,
+         * restauramos su posición antes de comenzar a arrastrarla.
+         */
+        StopShakeAnimation(true);
+
         isDragging = true;
         isOverlappingWhileDragging = false;
 
         positionBeforeDrag =
             rectTransform.anchoredPosition;
 
-        /*
-         * La pieza arrastrada se dibuja delante.
-         * Después bajará su opacidad al superponerse,
-         * permitiendo ver claramente la pieza inferior.
-         */
         transform.SetAsLastSibling();
 
         canvasGroup.blocksRaycasts = false;
-
         RefreshTargetAlpha();
 
         if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
@@ -282,7 +335,6 @@ public class PhrasePiece : MonoBehaviour,
         isOverlappingWhileDragging = false;
 
         canvasGroup.blocksRaycasts = canDrag;
-
         RefreshTargetAlpha();
 
         if (!canDrag ||
@@ -331,10 +383,6 @@ public class PhrasePiece : MonoBehaviour,
         RefreshTargetAlpha();
     }
 
-    /// <summary>
-    /// El controlador de superposición llama a este método
-    /// para indicar si la pieza arrastrada está sobre otra.
-    /// </summary>
     public void SetDraggingOverlapState(bool isOverlapping)
     {
         if (!isDragging)
@@ -348,8 +396,43 @@ public class PhrasePiece : MonoBehaviour,
         }
 
         isOverlappingWhileDragging = isOverlapping;
-
         RefreshTargetAlpha();
+    }
+
+    /// <summary>
+    /// Reproduce un pop breve en la nueva pieza resultante
+    /// de una conexión correcta.
+    /// </summary>
+    public void PlayPopAnimation()
+    {
+        if (!isActiveAndEnabled || rectTransform == null)
+        {
+            return;
+        }
+
+        StopPopAnimation(true);
+
+        popCoroutine = StartCoroutine(
+            PopAnimationRoutine()
+        );
+    }
+
+    /// <summary>
+    /// Reproduce un shake horizontal en la pieza de destino
+    /// cuando la conexión intentada es incorrecta.
+    /// </summary>
+    public void PlayShakeAnimation()
+    {
+        if (!isActiveAndEnabled || rectTransform == null)
+        {
+            return;
+        }
+
+        StopShakeAnimation(true);
+
+        shakeCoroutine = StartCoroutine(
+            ShakeAnimationRoutine()
+        );
     }
 
     public void SnapInsideMovementArea()
@@ -363,6 +446,149 @@ public class PhrasePiece : MonoBehaviour,
             GetClampedPosition(
                 rectTransform.anchoredPosition
             );
+    }
+
+    private IEnumerator PopAnimationRoutine()
+    {
+        Vector3 enlargedScale =
+            restingScale * popScaleMultiplier;
+
+        float elapsed = 0f;
+
+        while (elapsed < popGrowDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            float progress = Mathf.Clamp01(
+                elapsed / popGrowDuration
+            );
+
+            /*
+             * Curva suave con salida rápida para que el pop
+             * se sienta ágil y no pesado.
+             */
+            float easedProgress =
+                1f - Mathf.Pow(1f - progress, 3f);
+
+            rectTransform.localScale = Vector3.LerpUnclamped(
+                restingScale,
+                enlargedScale,
+                easedProgress
+            );
+
+            yield return null;
+        }
+
+        rectTransform.localScale = enlargedScale;
+        elapsed = 0f;
+
+        while (elapsed < popReturnDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            float progress = Mathf.Clamp01(
+                elapsed / popReturnDuration
+            );
+
+            float easedProgress =
+                progress * progress * (3f - 2f * progress);
+
+            rectTransform.localScale = Vector3.LerpUnclamped(
+                enlargedScale,
+                restingScale,
+                easedProgress
+            );
+
+            yield return null;
+        }
+
+        rectTransform.localScale = restingScale;
+        popCoroutine = null;
+    }
+
+    private IEnumerator ShakeAnimationRoutine()
+    {
+        shakeBasePosition =
+            rectTransform.anchoredPosition;
+
+        hasShakeBasePosition = true;
+
+        float elapsed = 0f;
+
+        while (elapsed < shakeDuration)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            float progress = Mathf.Clamp01(
+                elapsed / shakeDuration
+            );
+
+            float damping = 1f - progress;
+
+            float horizontalOffset =
+                Mathf.Sin(
+                    elapsed *
+                    shakeFrequency *
+                    Mathf.PI * 2f
+                ) *
+                shakeDistance *
+                damping;
+
+            rectTransform.anchoredPosition =
+                shakeBasePosition +
+                Vector2.right * horizontalOffset;
+
+            yield return null;
+        }
+
+        rectTransform.anchoredPosition =
+            shakeBasePosition;
+
+        hasShakeBasePosition = false;
+        shakeCoroutine = null;
+    }
+
+    private void StopAllFeedbackAnimations(bool restoreVisuals)
+    {
+        StopPopAnimation(restoreVisuals);
+        StopShakeAnimation(restoreVisuals);
+    }
+
+    private void StopPopAnimation(bool restoreScale)
+    {
+        if (popCoroutine != null)
+        {
+            StopCoroutine(popCoroutine);
+            popCoroutine = null;
+        }
+
+        if (restoreScale && rectTransform != null)
+        {
+            rectTransform.localScale = restingScale;
+        }
+    }
+
+    private void StopShakeAnimation(bool restorePosition)
+    {
+        if (shakeCoroutine == null)
+        {
+            return;
+        }
+
+        StopCoroutine(shakeCoroutine);
+        shakeCoroutine = null;
+
+        if (
+            restorePosition &&
+            rectTransform != null &&
+            hasShakeBasePosition
+        )
+        {
+            rectTransform.anchoredPosition =
+                shakeBasePosition;
+        }
+
+        hasShakeBasePosition = false;
     }
 
     private void RefreshTargetAlpha()
