@@ -207,7 +207,7 @@ public class RoundController : MonoBehaviour
         }
 
         List<PhraseDefinition> loadedPhrases =
-            PhraseCsvLoader.Load(phrasesCsv);
+            PhraseCsvLoader.LoadFromTextAsset(phrasesCsv);
 
         if (loadedPhrases.Count == 0)
         {

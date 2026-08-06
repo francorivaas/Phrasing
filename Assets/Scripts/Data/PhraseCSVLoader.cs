@@ -8,286 +8,439 @@ public static class PhraseCsvLoader
     private const char CsvSeparator = ',';
     private const char FragmentSeparator = '|';
 
-    public static List<PhraseDefinition> Load(TextAsset csvFile)
+    public static List<PhraseDefinition> LoadFromTextAsset(TextAsset csvFile)
     {
-        List<PhraseDefinition> validPhrases = new List<PhraseDefinition>();
+        List<PhraseDefinition> loadedPhrases =
+            new List<PhraseDefinition>();
 
         if (csvFile == null)
         {
-            Debug.LogError("No se asignó un archivo CSV de frases.");
-            return validPhrases;
-        }
-
-        if (string.IsNullOrWhiteSpace(csvFile.text))
-        {
-            Debug.LogError($"El archivo CSV '{csvFile.name}' está vacío.");
-            return validPhrases;
-        }
-
-        List<List<string>> rows = ParseCsv(csvFile.text);
-
-        if (rows.Count < 2)
-        {
             Debug.LogError(
-                $"El archivo CSV '{csvFile.name}' no contiene filas de datos."
+                "PhraseCsvLoader: el TextAsset del CSV es null."
             );
 
-            return validPhrases;
+            return loadedPhrases;
         }
 
-        Dictionary<string, int> headerMap = BuildHeaderMap(rows[0]);
+        string csvText = csvFile.text;
 
-        string[] requiredHeaders =
+        if (string.IsNullOrWhiteSpace(csvText))
         {
-            "id",
-            "category",
-            "fullPhrase",
-            "fragments"
-        };
+            Debug.LogError(
+                $"PhraseCsvLoader: el archivo CSV '{csvFile.name}' está vacío."
+            );
 
-        for (int i = 0; i < requiredHeaders.Length; i++)
+            return loadedPhrases;
+        }
+
+        List<string[]> rows = ParseCsv(csvText);
+
+        if (rows.Count <= 1)
         {
-            if (!headerMap.ContainsKey(requiredHeaders[i]))
+            Debug.LogWarning(
+                $"PhraseCsvLoader: el archivo CSV '{csvFile.name}' no contiene filas de datos."
+            );
+
+            return loadedPhrases;
+        }
+
+        HashSet<string> usedIds = new HashSet<string>();
+
+        for (int i = 1; i < rows.Count; i++)
+        {
+            string[] columns = rows[i];
+            int rowNumber = i + 1;
+
+            if (columns == null || columns.Length == 0)
             {
-                Debug.LogError(
-                    $"El CSV '{csvFile.name}' no contiene la columna obligatoria " +
-                    $"'{requiredHeaders[i]}'."
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: fila {rowNumber} vacía. Se omite."
                 );
-
-                return validPhrases;
-            }
-        }
-
-        HashSet<string> loadedIds = new HashSet<string>(
-            StringComparer.OrdinalIgnoreCase
-        );
-
-        for (int rowIndex = 1; rowIndex < rows.Count; rowIndex++)
-        {
-            List<string> row = rows[rowIndex];
-            int visibleRowNumber = rowIndex + 1;
-
-            if (IsEmptyRow(row))
-            {
                 continue;
             }
 
-            string id = GetColumnValue(row, headerMap["id"]);
-            string category = GetColumnValue(row, headerMap["category"]);
-            string fullPhrase = GetColumnValue(row, headerMap["fullPhrase"]);
-            string rawFragments = GetColumnValue(row, headerMap["fragments"]);
+            if (columns.Length < 4)
+            {
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: fila {rowNumber} inválida. " +
+                    $"Se esperaban 4 columnas y llegaron {columns.Length}. Se omite."
+                );
+                continue;
+            }
+
+            string id = SafeTrim(columns[0]);
+            string category = SafeTrim(columns[1]);
+            string fullPhrase = SafeTrim(columns[2]);
+            string fragmentsRaw = SafeTrim(columns[3]);
 
             if (string.IsNullOrWhiteSpace(id))
             {
                 Debug.LogWarning(
-                    $"CSV '{csvFile.name}', fila {visibleRowNumber}: ID vacío. " +
-                    "La fila fue ignorada."
+                    $"PhraseCsvLoader: fila {rowNumber} sin ID. Se omite."
                 );
-
                 continue;
             }
 
-            if (!loadedIds.Add(id.Trim()))
+            if (usedIds.Contains(id))
             {
                 Debug.LogWarning(
-                    $"CSV '{csvFile.name}', fila {visibleRowNumber}: " +
-                    $"el ID '{id}' está repetido. La fila fue ignorada."
+                    $"PhraseCsvLoader: ID duplicado '{id}' en fila {rowNumber}. Se omite."
                 );
-
                 continue;
             }
 
-            string[] fragments = SplitFragments(rawFragments);
-
-            PhraseDefinition phrase = new PhraseDefinition(
-                id,
-                category,
-                fullPhrase,
-                fragments
-            );
-
-            if (!phrase.IsValid(out string validationError))
+            if (string.IsNullOrWhiteSpace(category))
             {
                 Debug.LogWarning(
-                    $"CSV '{csvFile.name}', fila {visibleRowNumber}: " +
-                    validationError + " La fila fue ignorada."
+                    $"PhraseCsvLoader: fila {rowNumber} con categoría vacía. Se omite."
                 );
-
-                loadedIds.Remove(id.Trim());
                 continue;
             }
 
-            validPhrases.Add(phrase);
+            if (string.IsNullOrWhiteSpace(fullPhrase))
+            {
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: fila {rowNumber} con frase completa vacía. Se omite."
+                );
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(fragmentsRaw))
+            {
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: fila {rowNumber} con fragmentos vacíos. Se omite."
+                );
+                continue;
+            }
+
+            string[] fragments = ParseFragments(fragmentsRaw);
+
+            if (fragments.Length < 2)
+            {
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: fila {rowNumber} debe tener al menos 2 fragmentos. Se omite."
+                );
+                continue;
+            }
+
+            // NUEVO:
+            // Si el último fragmento es puntuación final independiente,
+            // lo unimos automáticamente al fragmento anterior.
+            fragments = MergeTrailingTerminalPunctuation(fragments);
+
+            if (fragments.Length < 2)
+            {
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: fila {rowNumber} quedó con menos de 2 fragmentos tras normalizar. Se omite."
+                );
+                continue;
+            }
+
+            if (ContainsEmptyFragment(fragments))
+            {
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: fila {rowNumber} contiene fragmentos vacíos. Se omite."
+                );
+                continue;
+            }
+
+            string rebuiltPhrase =
+                RebuildPhraseFromFragments(fragments);
+
+            if (!StringEqualsNormalized(rebuiltPhrase, fullPhrase))
+            {
+                Debug.LogWarning(
+                    $"PhraseCsvLoader: la fila {rowNumber} no coincide con la frase completa.\n" +
+                    $"ID: {id}\n" +
+                    $"FullPhrase: '{fullPhrase}'\n" +
+                    $"Reconstruida: '{rebuiltPhrase}'\n" +
+                    $"Se omite."
+                );
+                continue;
+            }
+
+            PhraseDefinition definition =
+                new PhraseDefinition(
+                    id,
+                    category,
+                    fullPhrase,
+                    fragments
+                );
+
+            loadedPhrases.Add(definition);
+            usedIds.Add(id);
         }
 
         Debug.Log(
-            $"CSV '{csvFile.name}' cargado correctamente: " +
-            $"{validPhrases.Count} frases válidas."
+            $"CSV '{csvFile.name}' cargado correctamente: {loadedPhrases.Count} frases válidas."
         );
 
-        return validPhrases;
+        return loadedPhrases;
     }
 
-    private static string[] SplitFragments(string rawFragments)
+    private static string[] ParseFragments(string fragmentsRaw)
     {
-        if (string.IsNullOrWhiteSpace(rawFragments))
+        string[] rawParts =
+            fragmentsRaw.Split(FragmentSeparator);
+
+        List<string> cleanParts =
+            new List<string>();
+
+        for (int i = 0; i < rawParts.Length; i++)
         {
-            return new string[0];
+            string fragment = SafeTrim(rawParts[i]);
+
+            if (!string.IsNullOrWhiteSpace(fragment))
+            {
+                cleanParts.Add(fragment);
+            }
         }
 
-        string[] fragments = rawFragments.Split(
-            new[] { FragmentSeparator },
-            StringSplitOptions.None
-        );
+        return cleanParts.ToArray();
+    }
 
+    /// <summary>
+    /// Si el último fragmento es "." "!" "?" "..." o "…",
+    /// se pega al fragmento anterior para que no aparezca
+    /// como pieza independiente en el gameplay.
+    /// </summary>
+    private static string[] MergeTrailingTerminalPunctuation(string[] fragments)
+    {
+        if (fragments == null || fragments.Length < 2)
+        {
+            return fragments;
+        }
+
+        int lastIndex = fragments.Length - 1;
+        string lastFragment = SafeTrim(fragments[lastIndex]);
+
+        if (!IsTerminalClosingPunctuation(lastFragment))
+        {
+            return fragments;
+        }
+
+        string previousFragment = SafeTrim(fragments[lastIndex - 1]);
+
+        if (string.IsNullOrWhiteSpace(previousFragment))
+        {
+            return fragments;
+        }
+
+        List<string> merged = new List<string>();
+
+        for (int i = 0; i < fragments.Length - 2; i++)
+        {
+            merged.Add(SafeTrim(fragments[i]));
+        }
+
+        merged.Add(previousFragment + lastFragment);
+
+        return merged.ToArray();
+    }
+
+    private static bool IsTerminalClosingPunctuation(string value)
+    {
+        return value == "." ||
+               value == "!" ||
+               value == "?" ||
+               value == "..." ||
+               value == "…";
+    }
+
+    private static bool ContainsEmptyFragment(string[] fragments)
+    {
         for (int i = 0; i < fragments.Length; i++)
         {
-            fragments[i] = fragments[i].Trim();
-        }
-
-        return fragments;
-    }
-
-    private static Dictionary<string, int> BuildHeaderMap(
-        List<string> headerRow)
-    {
-        Dictionary<string, int> headerMap = new Dictionary<string, int>(
-            StringComparer.OrdinalIgnoreCase
-        );
-
-        for (int i = 0; i < headerRow.Count; i++)
-        {
-            string header = headerRow[i]
-                .Trim()
-                .TrimStart('\uFEFF');
-
-            if (string.IsNullOrWhiteSpace(header))
+            if (string.IsNullOrWhiteSpace(fragments[i]))
             {
-                continue;
-            }
-
-            if (!headerMap.ContainsKey(header))
-            {
-                headerMap.Add(header, i);
+                return true;
             }
         }
 
-        return headerMap;
+        return false;
     }
 
-    private static string GetColumnValue(List<string> row, int columnIndex)
+    private static string RebuildPhraseFromFragments(string[] fragments)
     {
-        if (columnIndex < 0 || columnIndex >= row.Count)
+        if (fragments == null || fragments.Length == 0)
         {
             return string.Empty;
         }
 
-        return row[columnIndex].Trim();
-    }
+        StringBuilder builder = new StringBuilder();
+        string previous = string.Empty;
 
-    private static bool IsEmptyRow(List<string> row)
-    {
-        if (row == null || row.Count == 0)
+        for (int i = 0; i < fragments.Length; i++)
         {
-            return true;
+            string current = SafeTrim(fragments[i]);
+
+            if (string.IsNullOrWhiteSpace(current))
+            {
+                continue;
+            }
+
+            if (builder.Length == 0)
+            {
+                builder.Append(current);
+            }
+            else
+            {
+                bool addSpace =
+                    !IsPunctuationThatAvoidsSpaceBefore(current) &&
+                    !IsPunctuationThatAvoidsSpaceAfter(previous);
+
+                if (addSpace)
+                {
+                    builder.Append(' ');
+                }
+
+                builder.Append(current);
+            }
+
+            previous = current;
         }
 
-        for (int i = 0; i < row.Count; i++)
+        return builder.ToString();
+    }
+
+    private static bool IsPunctuationThatAvoidsSpaceBefore(string value)
+    {
+        return value == "." ||
+               value == "," ||
+               value == ";" ||
+               value == ":" ||
+               value == "!" ||
+               value == "?" ||
+               value == "%" ||
+               value == ")" ||
+               value == "]" ||
+               value == "}" ||
+               value == "…" ||
+               value == "...";
+    }
+
+    private static bool IsPunctuationThatAvoidsSpaceAfter(string value)
+    {
+        return value == "¿" ||
+               value == "¡" ||
+               value == "(" ||
+               value == "[" ||
+               value == "{";
+    }
+
+    private static bool StringEqualsNormalized(string a, string b)
+    {
+        string normalizedA = NormalizeWhitespace(a);
+        string normalizedB = NormalizeWhitespace(b);
+
+        return string.Equals(
+            normalizedA,
+            normalizedB,
+            StringComparison.Ordinal
+        );
+    }
+
+    private static string NormalizeWhitespace(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
         {
-            if (!string.IsNullOrWhiteSpace(row[i]))
+            return string.Empty;
+        }
+
+        string trimmed = value.Trim();
+        StringBuilder builder = new StringBuilder();
+
+        bool previousWasWhitespace = false;
+
+        for (int i = 0; i < trimmed.Length; i++)
+        {
+            char c = trimmed[i];
+
+            if (char.IsWhiteSpace(c))
             {
-                return false;
+                if (!previousWasWhitespace)
+                {
+                    builder.Append(' ');
+                    previousWasWhitespace = true;
+                }
+            }
+            else
+            {
+                builder.Append(c);
+                previousWasWhitespace = false;
             }
         }
 
-        return true;
+        return builder.ToString();
     }
 
-    private static List<List<string>> ParseCsv(string csvText)
+    private static string SafeTrim(string value)
     {
-        List<List<string>> rows = new List<List<string>>();
-        List<string> currentRow = new List<string>();
-        StringBuilder currentField = new StringBuilder();
+        return string.IsNullOrEmpty(value)
+            ? string.Empty
+            : value.Trim();
+    }
 
-        bool insideQuotedField = false;
+    private static List<string[]> ParseCsv(string csvText)
+    {
+        List<string[]> rows = new List<string[]>();
+        List<string> currentRow = new List<string>();
+        StringBuilder currentCell = new StringBuilder();
+
+        bool insideQuotes = false;
 
         for (int i = 0; i < csvText.Length; i++)
         {
-            char currentCharacter = csvText[i];
+            char currentChar = csvText[i];
 
-            if (currentCharacter == '"')
+            if (currentChar == '"')
             {
-                bool isEscapedQuote =
-                    insideQuotedField &&
+                if (insideQuotes &&
                     i + 1 < csvText.Length &&
-                    csvText[i + 1] == '"';
-
-                if (isEscapedQuote)
+                    csvText[i + 1] == '"')
                 {
-                    currentField.Append('"');
+                    currentCell.Append('"');
                     i++;
                 }
                 else
                 {
-                    insideQuotedField = !insideQuotedField;
+                    insideQuotes = !insideQuotes;
                 }
 
                 continue;
             }
 
-            if (currentCharacter == CsvSeparator && !insideQuotedField)
+            if (currentChar == CsvSeparator && !insideQuotes)
             {
-                currentRow.Add(currentField.ToString());
-                currentField.Clear();
+                currentRow.Add(currentCell.ToString());
+                currentCell.Clear();
                 continue;
             }
 
-            bool isLineBreak =
-                currentCharacter == '\n' ||
-                currentCharacter == '\r';
-
-            if (isLineBreak && !insideQuotedField)
+            if ((currentChar == '\n' || currentChar == '\r') && !insideQuotes)
             {
-                if (
-                    currentCharacter == '\r' &&
+                if (currentChar == '\r' &&
                     i + 1 < csvText.Length &&
-                    csvText[i + 1] == '\n'
-                )
+                    csvText[i + 1] == '\n')
                 {
                     i++;
                 }
 
-                currentRow.Add(currentField.ToString());
-                currentField.Clear();
+                currentRow.Add(currentCell.ToString());
+                currentCell.Clear();
 
-                if (!IsEmptyRow(currentRow))
-                {
-                    rows.Add(currentRow);
-                }
-
-                currentRow = new List<string>();
+                rows.Add(currentRow.ToArray());
+                currentRow.Clear();
                 continue;
             }
 
-            currentField.Append(currentCharacter);
+            currentCell.Append(currentChar);
         }
 
-        if (insideQuotedField)
+        if (currentCell.Length > 0 || currentRow.Count > 0)
         {
-            Debug.LogWarning(
-                "El CSV terminó dentro de un campo entre comillas. " +
-                "Revisa que las comillas estén correctamente cerradas."
-            );
-        }
-
-        if (currentField.Length > 0 || currentRow.Count > 0)
-        {
-            currentRow.Add(currentField.ToString());
-
-            if (!IsEmptyRow(currentRow))
-            {
-                rows.Add(currentRow);
-            }
+            currentRow.Add(currentCell.ToString());
+            rows.Add(currentRow.ToArray());
         }
 
         return rows;
