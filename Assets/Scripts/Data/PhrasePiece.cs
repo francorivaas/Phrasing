@@ -84,6 +84,26 @@ public class PhrasePiece : MonoBehaviour,
     [SerializeField, Min(0f)]
     private float memoryTextTransitionDuration = 0.24f;
 
+    [Header("Advertencia antes de ocultarse")]
+    [Tooltip(
+        "Elemento visual que vibrará antes de ocultarse. " +
+        "Si queda vacío, se utilizará el texto de la pieza."
+    )]
+    [SerializeField]
+    private RectTransform memoryWarningTarget;
+
+    [Tooltip("Rotación máxima de la vibración, en grados.")]
+    [SerializeField, Min(0f)]
+    private float memoryWarningRotation = 1.6f;
+
+    [Tooltip("Velocidad de la vibración.")]
+    [SerializeField, Min(1f)]
+    private float memoryWarningFrequency = 12f;
+
+    [Tooltip("Escala máxima alcanzada durante el pequeño pulso.")]
+    [SerializeField, Min(1f)]
+    private float memoryWarningScaleMultiplier = 1.025f;
+
     private RoundController roundController;
     private RectTransform movementArea;
 
@@ -106,6 +126,10 @@ public class PhrasePiece : MonoBehaviour,
     private Color visibleLabelColor = Color.white;
     private bool isMemoryHidden;
 
+    private Coroutine memoryWarningCoroutine;
+    private Vector3 memoryWarningBaseScale = Vector3.one;
+    private Quaternion memoryWarningBaseRotation = Quaternion.identity;
+
     public int StartIndex { get; private set; }
     public int EndIndex { get; private set; }
     public string PieceText { get; private set; }
@@ -115,6 +139,9 @@ public class PhrasePiece : MonoBehaviour,
     public float MovementPadding => movementPadding;
     public bool IsDragging => isDragging;
     public bool IsMemoryHidden => isMemoryHidden;
+    public bool IsMemoryWarningActive =>
+        memoryWarningCoroutine != null;
+
     public float MemoryTextTransitionDuration =>
         memoryTextTransitionDuration;
 
@@ -142,6 +169,7 @@ public class PhrasePiece : MonoBehaviour,
     {
         StopAllFeedbackAnimations(false);
         StopMemoryTextAnimation(false);
+        StopMemoryWarningAnimation(false);
     }
 
     public void Initialize(
@@ -182,6 +210,9 @@ public class PhrasePiece : MonoBehaviour,
 
         visibleLabelColor = label.color;
         isMemoryHidden = false;
+
+        ConfigureMemoryWarningTarget();
+        StopMemoryWarningAnimation(true);
 
         isDragging = false;
         isOverlappingWhileDragging = false;
@@ -484,6 +515,60 @@ public class PhrasePiece : MonoBehaviour,
     }
 
     /// <summary>
+    /// Inicia una vibración sutil que advierte que el contenido
+    /// de esta pieza está a punto de desaparecer.
+    /// </summary>
+    public void StartMemoryWarningAnimation()
+    {
+        if (
+            !isActiveAndEnabled ||
+            label == null ||
+            isMemoryHidden
+        )
+        {
+            return;
+        }
+
+        ConfigureMemoryWarningTarget();
+        StopMemoryWarningAnimation(true);
+
+        if (memoryWarningTarget == null)
+        {
+            return;
+        }
+
+        memoryWarningCoroutine = StartCoroutine(
+            MemoryWarningRoutine()
+        );
+    }
+
+    /// <summary>
+    /// Detiene la advertencia y restaura el texto a su
+    /// rotación y escala originales.
+    /// </summary>
+    public void StopMemoryWarningAnimation(
+        bool restoreTransform = true)
+    {
+        if (memoryWarningCoroutine != null)
+        {
+            StopCoroutine(memoryWarningCoroutine);
+            memoryWarningCoroutine = null;
+        }
+
+        if (
+            restoreTransform &&
+            memoryWarningTarget != null
+        )
+        {
+            memoryWarningTarget.localScale =
+                memoryWarningBaseScale;
+
+            memoryWarningTarget.localRotation =
+                memoryWarningBaseRotation;
+        }
+    }
+
+    /// <summary>
     /// Oculta el contenido visible sin cambiar el tamaño,
     /// la posición ni el texto interno usado por el gameplay.
     /// </summary>
@@ -494,6 +579,7 @@ public class PhrasePiece : MonoBehaviour,
             return;
         }
 
+        StopMemoryWarningAnimation(true);
         isMemoryHidden = true;
 
         StartMemoryTextTransition(
@@ -514,6 +600,7 @@ public class PhrasePiece : MonoBehaviour,
             return;
         }
 
+        StopMemoryWarningAnimation(true);
         isMemoryHidden = false;
 
         StartMemoryTextTransition(
@@ -676,6 +763,77 @@ public class PhrasePiece : MonoBehaviour,
         }
 
         hasShakeBasePosition = false;
+    }
+
+    private void ConfigureMemoryWarningTarget()
+    {
+        if (
+            memoryWarningTarget == null &&
+            label != null
+        )
+        {
+            memoryWarningTarget =
+                label.rectTransform;
+        }
+
+        if (memoryWarningTarget == null)
+        {
+            return;
+        }
+
+        memoryWarningBaseScale =
+            memoryWarningTarget.localScale;
+
+        memoryWarningBaseRotation =
+            memoryWarningTarget.localRotation;
+    }
+
+    private IEnumerator MemoryWarningRoutine()
+    {
+        float elapsed = 0f;
+
+        while (true)
+        {
+            elapsed += Time.unscaledDeltaTime;
+
+            float wave = Mathf.Sin(
+                elapsed *
+                memoryWarningFrequency *
+                Mathf.PI * 2f
+            );
+
+            float secondaryWave = Mathf.Sin(
+                elapsed *
+                memoryWarningFrequency *
+                Mathf.PI
+            );
+
+            float rotation =
+                wave * memoryWarningRotation;
+
+            float pulseProgress =
+                (secondaryWave + 1f) * 0.5f;
+
+            float scaleMultiplier = Mathf.Lerp(
+                1f,
+                memoryWarningScaleMultiplier,
+                pulseProgress
+            );
+
+            memoryWarningTarget.localRotation =
+                memoryWarningBaseRotation *
+                Quaternion.Euler(
+                    0f,
+                    0f,
+                    rotation
+                );
+
+            memoryWarningTarget.localScale =
+                memoryWarningBaseScale *
+                scaleMultiplier;
+
+            yield return null;
+        }
     }
 
     private void StartMemoryTextTransition(

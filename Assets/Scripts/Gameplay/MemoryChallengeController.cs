@@ -49,8 +49,11 @@ public class MemoryChallengeController : MonoBehaviour
     [SerializeField, Min(0f)]
     private float minimumOverlapAreaToExclude = 25f;
 
-    [Header("Tiempos")]
-    [Tooltip("Tiempo visible de las piezas antes de ocultarse.")]
+    [Header("Tiempo antes de ocultarse")]
+    [Tooltip(
+        "Tiempo durante el cual las piezas seleccionadas permanecen " +
+        "visibles y vibrando. El jugador puede seguir jugando."
+    )]
     [SerializeField, Min(0.1f)]
     private float initialExposureDuration = 3f;
 
@@ -64,20 +67,17 @@ public class MemoryChallengeController : MonoBehaviour
     [SerializeField, Min(0.1f)]
     private float minimumExposureDuration = 1.8f;
 
-    [Tooltip(
-        "Pausa breve tras ocultar los textos antes de habilitar el input."
-    )]
-    [SerializeField, Min(0f)]
-    private float postHideInputDelay = 0.15f;
-
     [Header("Mensaje opcional")]
     [SerializeField] private TMP_Text statusText;
+
     [SerializeField]
-    private string memorizationMessage =
-        "Memoriza los fragmentos...";
+    private string warningMessage =
+        "¡Estas piezas van a desaparecer!";
+
     [SerializeField]
     private string hiddenMessage =
-        "¡Ahora conéctalos de memoria!";
+        "¡Ahora recuérdalas!";
+
     [SerializeField, Min(0f)]
     private float hiddenMessageDuration = 0.8f;
 
@@ -85,9 +85,17 @@ public class MemoryChallengeController : MonoBehaviour
         new List<PhrasePiece>();
 
     private Coroutine challengeCoroutine;
+    private bool isWarningPhase;
 
-    public bool IsBlockingInput { get; private set; }
+    /*
+     * Se conserva esta propiedad para mantener compatibilidad
+     * con versiones anteriores de RoundController. En esta versión
+     * nunca bloqueamos el input.
+     */
+    public bool IsBlockingInput => false;
+
     public bool IsChallengeActive { get; private set; }
+    public bool IsWarningPhase => isWarningPhase;
     public int CurrentHiddenPieceCount => selectedPieces.Count;
 
     private void Awake()
@@ -144,11 +152,53 @@ public class MemoryChallengeController : MonoBehaviour
             CalculateExposureDuration(roundNumber);
 
         IsChallengeActive = true;
-        IsBlockingInput = true;
+        isWarningPhase = true;
 
         challengeCoroutine = StartCoroutine(
             RunChallengeSequence(exposureDuration)
         );
+    }
+
+    /// <summary>
+    /// Mantiene el desafío si una pieza marcada se fusiona antes
+    /// de desaparecer. La nueva pieza hereda la advertencia.
+    /// </summary>
+    public void HandlePiecesMerged(
+        PhrasePiece firstPiece,
+        PhrasePiece secondPiece,
+        PhrasePiece mergedPiece)
+    {
+        bool firstWasSelected =
+            RemoveSelectedPiece(firstPiece);
+
+        bool secondWasSelected =
+            RemoveSelectedPiece(secondPiece);
+
+        if (!firstWasSelected && !secondWasSelected)
+        {
+            return;
+        }
+
+        if (
+            isWarningPhase &&
+            mergedPiece != null
+        )
+        {
+            if (!selectedPieces.Contains(mergedPiece))
+            {
+                selectedPieces.Add(mergedPiece);
+            }
+
+            mergedPiece.StartMemoryWarningAnimation();
+        }
+
+        if (
+            !isWarningPhase &&
+            selectedPieces.Count == 0
+        )
+        {
+            IsChallengeActive = false;
+        }
     }
 
     public void CancelCurrentChallenge()
@@ -163,15 +213,18 @@ public class MemoryChallengeController : MonoBehaviour
         {
             PhrasePiece piece = selectedPieces[i];
 
-            if (piece != null)
+            if (piece == null)
             {
-                piece.RevealMemoryContent(false);
+                continue;
             }
+
+            piece.StopMemoryWarningAnimation(true);
+            piece.RevealMemoryContent(false);
         }
 
         selectedPieces.Clear();
 
-        IsBlockingInput = false;
+        isWarningPhase = false;
         IsChallengeActive = false;
 
         HideStatusText();
@@ -183,10 +236,21 @@ public class MemoryChallengeController : MonoBehaviour
         /*
          * Esperamos un frame para garantizar que el tablero,
          * los tamaños y las posiciones ya estén estabilizados.
+         * El input permanece activo.
          */
         yield return null;
 
-        ShowStatusText(memorizationMessage);
+        ShowStatusText(warningMessage);
+
+        for (int i = 0; i < selectedPieces.Count; i++)
+        {
+            PhrasePiece piece = selectedPieces[i];
+
+            if (piece != null)
+            {
+                piece.StartMemoryWarningAnimation();
+            }
+        }
 
         if (exposureDuration > 0f)
         {
@@ -195,17 +259,25 @@ public class MemoryChallengeController : MonoBehaviour
             );
         }
 
+        isWarningPhase = false;
+
         float longestTransition = 0f;
 
-        for (int i = 0; i < selectedPieces.Count; i++)
+        /*
+         * La lista puede haber cambiado durante el tiempo de
+         * exposición porque las piezas pueden fusionarse.
+         */
+        for (int i = selectedPieces.Count - 1; i >= 0; i--)
         {
             PhrasePiece piece = selectedPieces[i];
 
             if (piece == null)
             {
+                selectedPieces.RemoveAt(i);
                 continue;
             }
 
+            piece.StopMemoryWarningAnimation(true);
             piece.HideMemoryContent(true);
 
             longestTransition = Mathf.Max(
@@ -223,15 +295,6 @@ public class MemoryChallengeController : MonoBehaviour
 
         ShowStatusText(hiddenMessage);
 
-        if (postHideInputDelay > 0f)
-        {
-            yield return new WaitForSecondsRealtime(
-                postHideInputDelay
-            );
-        }
-
-        IsBlockingInput = false;
-
         if (hiddenMessageDuration > 0f)
         {
             yield return new WaitForSecondsRealtime(
@@ -242,6 +305,30 @@ public class MemoryChallengeController : MonoBehaviour
         HideStatusText();
 
         challengeCoroutine = null;
+
+        if (selectedPieces.Count == 0)
+        {
+            IsChallengeActive = false;
+        }
+    }
+
+    private bool RemoveSelectedPiece(
+        PhrasePiece piece)
+    {
+        if (piece == null)
+        {
+            return false;
+        }
+
+        bool removed =
+            selectedPieces.Remove(piece);
+
+        if (removed)
+        {
+            piece.StopMemoryWarningAnimation(true);
+        }
+
+        return removed;
     }
 
     private List<PhrasePiece> BuildEligibleCandidateList(
@@ -350,9 +437,6 @@ public class MemoryChallengeController : MonoBehaviour
     {
         selectedPieces.Clear();
 
-        /*
-         * Primera pasada: respetamos la regla de no adyacencia.
-         */
         for (int i = 0; i < candidates.Count; i++)
         {
             PhrasePiece candidate = candidates[i];
@@ -376,10 +460,6 @@ public class MemoryChallengeController : MonoBehaviour
             selectedPieces.Add(candidate);
         }
 
-        /*
-         * Segunda pasada: si no alcanzamos la cantidad solicitada,
-         * permitimos adyacencias antes que reducir la dificultad.
-         */
         for (int i = 0; i < candidates.Count; i++)
         {
             PhrasePiece candidate = candidates[i];

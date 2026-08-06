@@ -249,3 +249,18 @@ MonoBehaviour:
   minHeight: 100
   maxHeight: 260
   movementPadding: 40
+  overlappingDragAlpha: 0.35
+  normalDragAlpha: 1
+  alphaTransitionSpeed: 10
+  popScaleMultiplier: 1.12
+  popGrowDuration: 0.1
+  popReturnDuration: 0.16
+  shakeDistance: 16
+  shakeDuration: 0.26
+  shakeFrequency: 22
+  hiddenMemoryPlaceholder: "\u2022\u2022\u2022"
+  memoryTextTransitionDuration: 0.1
+  memoryWarningTarget: {fileID: 0}
+  memoryWarningRotation: 1.6
+  memoryWarningFrequency: 12
+  memoryWarningScaleMultiplier: 1.025

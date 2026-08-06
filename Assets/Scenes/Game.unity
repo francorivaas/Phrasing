@@ -155,7 +155,7 @@ MonoBehaviour:
   playArea: {fileID: 1764952652}
   rootCanvas: {fileID: 497871182}
   hudController: {fileID: 1685558079}
-  memoryChallengeController: {fileID: 0}
+  memoryChallengeController: {fileID: 937829218}
   startAutomatically: 1
   shuffleInitialPieces: 1
   spawnMargin: 30
@@ -1197,6 +1197,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 937829217}
+  - component: {fileID: 937829218}
   m_Layer: 0
   m_Name: Memory challenge controller
   m_TagString: Untagged
@@ -1219,6 +1220,33 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &937829218
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 937829216}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c2197078b1a01ae40afa866cdbd8a1df, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::MemoryChallengeController
+  startAtRoundNumber: 1
+  addHiddenPieceEveryRounds: 7
+  maximumHiddenPieces: 3
+  maximumHiddenFraction: 0.4
+  minimumReadableCharacters: 4
+  avoidAdjacentHiddenPieces: 1
+  excludeInitiallyOverlappedPieces: 1
+  minimumOverlapAreaToExclude: 25
+  initialExposureDuration: 1
+  exposureReductionPerRound: 0.05
+  minimumExposureDuration: 1.8
+  statusText: {fileID: 0}
+  warningMessage: "\xA1Estas piezas van a desaparecer!"
+  hiddenMessage: "\xA1Ahora con\xE9ctalos de memoria!"
+  hiddenMessageDuration: 0.8
 --- !u!1 &1013458494
 GameObject:
   m_ObjectHideFlags: 0

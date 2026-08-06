@@ -66,11 +66,7 @@ public class RoundController : MonoBehaviour
     public bool CanInteract =>
         roundIsRunning &&
         !roundHasEnded &&
-        !isResolvingMove &&
-        (
-            memoryChallengeController == null ||
-            !memoryChallengeController.IsBlockingInput
-        );
+        !isResolvingMove;
 
     public int SessionRoundNumber => sessionRoundNumber;
 
@@ -101,11 +97,7 @@ public class RoundController : MonoBehaviour
     {
         if (
             !roundIsRunning ||
-            roundHasEnded ||
-            (
-                memoryChallengeController != null &&
-                memoryChallengeController.IsBlockingInput
-            )
+            roundHasEnded
         )
         {
             return;
@@ -619,6 +611,15 @@ public class RoundController : MonoBehaviour
             mergePosition
         );
 
+        if (memoryChallengeController != null)
+        {
+            memoryChallengeController.HandlePiecesMerged(
+                firstPiece,
+                secondPiece,
+                mergedPiece
+            );
+        }
+
         if (resolvedHiddenMemory)
         {
             mergedPiece.RevealMemoryContent(false);
@@ -854,6 +855,11 @@ public class RoundController : MonoBehaviour
         roundHasEnded = true;
         roundIsRunning = false;
         isResolvingMove = true;
+
+        if (memoryChallengeController != null)
+        {
+            memoryChallengeController.CancelCurrentChallenge();
+        }
 
         finalPiece.SetInteractable(false);
         finalPiece.transform.SetAsLastSibling();
