@@ -269,18 +269,69 @@ public class PhrasePiece : MonoBehaviour,
             return;
         }
 
+        /*
+         * Calculamos cuánto espacio real tiene disponible
+         * la pieza dentro del área de juego.
+         *
+         * Esto evita que una frase fusionada pueda llegar
+         * a ser más ancha que el propio PlayArea.
+         */
+        float maximumAllowedWidth = maxWidth;
+        float maximumAllowedHeight = maxHeight;
+
+        if (movementArea != null)
+        {
+            float availableAreaWidth =
+                movementArea.rect.width -
+                movementPadding * 2f;
+
+            float availableAreaHeight =
+                movementArea.rect.height -
+                movementPadding * 2f;
+
+            maximumAllowedWidth = Mathf.Min(
+                maxWidth,
+                Mathf.Max(1f, availableAreaWidth)
+            );
+
+            maximumAllowedHeight = Mathf.Min(
+                maxHeight,
+                Mathf.Max(1f, availableAreaHeight)
+            );
+        }
+
+        /*
+         * Si por alguna resolución extremadamente pequeña
+         * el espacio disponible fuera menor que minWidth,
+         * permitimos reducir la pieza por debajo del mínimo
+         * antes que dejarla salir del tablero.
+         */
+        float effectiveMinWidth =
+            Mathf.Min(minWidth, maximumAllowedWidth);
+
+        float effectiveMinHeight =
+            Mathf.Min(minHeight, maximumAllowedHeight);
+
+        /*
+         * Primero intentamos mostrar el texto en una sola línea.
+         */
         Vector2 singleLinePreferredSize =
             label.GetPreferredValues(PieceText);
 
         float desiredWidth =
-            singleLinePreferredSize.x + horizontalPadding;
+            singleLinePreferredSize.x +
+            horizontalPadding;
 
         float finalWidth = Mathf.Clamp(
             desiredWidth,
-            minWidth,
-            maxWidth
+            effectiveMinWidth,
+            maximumAllowedWidth
         );
 
+        /*
+         * Si no entra horizontalmente, TMP calcula cuánto
+         * alto necesita al hacer wrapping.
+         */
         float availableTextWidth = Mathf.Max(
             1f,
             finalWidth - horizontalPadding
@@ -294,12 +345,13 @@ public class PhrasePiece : MonoBehaviour,
             );
 
         float desiredHeight =
-            wrappedPreferredSize.y + verticalPadding;
+            wrappedPreferredSize.y +
+            verticalPadding;
 
         float finalHeight = Mathf.Clamp(
             desiredHeight,
-            minHeight,
-            maxHeight
+            effectiveMinHeight,
+            maximumAllowedHeight
         );
 
         rectTransform.SetSizeWithCurrentAnchors(
